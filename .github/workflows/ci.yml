@@ -104,7 +104,7 @@ jobs:
             -m "not network and not slow"
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         if: ${{ !cancelled() }}
         with:
           file: ./coverage.xml
