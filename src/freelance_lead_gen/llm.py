@@ -64,6 +64,15 @@ class LLMContentFilterError(LLMError):
     """Raised when the response was filtered by content moderation."""
 
 
+class SpendLimitExceeded(LLMError):
+    """Raised when the per-run token budget is exhausted.
+
+    Triggered when :attr:`LLMClient._total_tokens` reaches
+    :attr:`LLMClient._max_tokens_per_run`.  Call :meth:`LLMClient.reset_spend`
+    to clear the counter for a new pipeline run.
+    """
+
+
 # ── Token counting ─────────────────────────────────────────────────────────────
 
 
@@ -292,6 +301,8 @@ class LLMClient:
         self._max_retries: int = llm_cfg.max_retries
         self._default_model: str = llm_cfg.model
         self._default_temperature: float = 0.7
+        self._max_tokens_per_run: int = 100_000
+        self._total_tokens: int = 0
 
         # Lifetime stats.
         self._stats: dict[str, Any] = {
@@ -388,6 +399,13 @@ class LLMClient:
             if wait_time > 1.0:
                 await asyncio.sleep(wait_time)
 
+        # Spend-cap check — raise early if we've exhausted the budget.
+        if self._total_tokens >= self._max_tokens_per_run:
+            raise SpendLimitExceeded(
+                f"Token budget exhausted: {self._total_tokens} >= {self._max_tokens_per_run}. "
+                "Call reset_spend() to start a new run or increase max_tokens_per_run."
+            )
+
         last_error: Exception | None = None
 
         for attempt in range(1, self._max_retries + 1):
@@ -421,6 +439,8 @@ class LLMClient:
                                 "role": "system",
                                 "content": "You MUST respond with valid JSON only.",
                             })
+                            # Update kwargs so the modified messages are sent.
+                            kwargs["messages"] = messages
 
                 if stream:
                     return self._stream_completion(
@@ -441,6 +461,7 @@ class LLMClient:
                 if response.usage is not None:
                     total_tokens = response.usage.total_tokens or 0
                     self._stats["total_tokens"] += total_tokens
+                    self._total_tokens += total_tokens
 
                 content = response.choices[0].message.content or ""
 
@@ -566,9 +587,12 @@ class LLMClient:
         max_tokens: int | None,
         label: str | None,
     ) -> AsyncIterator[str]:
-        """Stream a chat completion token by token.
+        """Stream a chat completion token by token with retry handling.
 
-        Yields text chunks as they arrive from the API.
+        Yields text chunks as they arrive from the API.  Retries on
+        transient errors (rate limits, timeouts, server errors) up to
+        ``self._max_retries`` times.  Authentication errors are raised
+        immediately as non-recoverable.
         """
         kwargs: dict[str, Any] = {
             "model": model,
@@ -579,15 +603,109 @@ class LLMClient:
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
 
-        stream = await self._client.chat.completions.create(**kwargs)
+        last_error: Exception | None = None
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                stream = await self._client.chat.completions.create(**kwargs)
 
-        async for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if delta and delta.content:
-                yield delta.content
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta and delta.content:
+                        yield delta.content
 
-        self._stats["total_requests"] += 1
-        logger.debug("llm.stream_complete", label=label, model=model)
+                self._stats["total_requests"] += 1
+                logger.debug("llm.stream_complete", label=label, model=model)
+                return
+
+            except AuthenticationError as exc:
+                self._stats["total_errors"] += 1
+                raise LLMAuthenticationError(
+                    f"LLM authentication failed: {exc}",
+                    original=exc,
+                ) from exc
+
+            except RateLimitError as exc:
+                self._stats["total_errors"] += 1
+                self._stats["total_retries"] += 1
+                last_error = exc
+                retry_after = _parse_retry_after(str(exc))
+                logger.warning(
+                    "llm.stream_rate_limited",
+                    label=label,
+                    attempt=attempt,
+                    retry_after_seconds=retry_after,
+                )
+                if attempt < self._max_retries:
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise LLMRateLimitError(
+                    f"Rate limited after {self._max_retries} retries: {exc}",
+                    original=exc,
+                ) from exc
+
+            except Timeout as exc:
+                self._stats["total_errors"] += 1
+                self._stats["total_retries"] += 1
+                last_error = exc
+                if attempt < self._max_retries:
+                    backoff = 2.0 ** attempt + 1.0
+                    logger.warning(
+                        "llm.stream_timeout",
+                        label=label,
+                        attempt=attempt,
+                        backoff_seconds=round(backoff, 1),
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise LLMTimeoutError(
+                    f"Request timed out after {self._max_retries} retries: {exc}",
+                    original=exc,
+                ) from exc
+
+            except InternalServerError as exc:
+                self._stats["total_errors"] += 1
+                self._stats["total_retries"] += 1
+                last_error = exc
+                if attempt < self._max_retries:
+                    backoff = 3.0 ** attempt
+                    logger.warning(
+                        "llm.stream_server_error",
+                        label=label,
+                        attempt=attempt,
+                        backoff_seconds=round(backoff, 1),
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise LLMError(
+                    f"Server error after {self._max_retries} retries: {exc}",
+                    original=exc,
+                ) from exc
+
+            except APIError as exc:
+                self._stats["total_errors"] += 1
+                self._stats["total_retries"] += 1
+                last_error = exc
+                if attempt < self._max_retries:
+                    backoff = 2.0 ** attempt
+                    logger.warning(
+                        "llm.stream_api_error",
+                        label=label,
+                        attempt=attempt,
+                        status_code=getattr(exc, "status_code", None),
+                        backoff_seconds=round(backoff, 1),
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise LLMError(
+                    f"API error after {self._max_retries} retries: {exc}",
+                    original=exc,
+                ) from exc
+
+        # Shouldn't normally reach here, but just in case.
+        raise LLMError(
+            f"Stream request failed after {self._max_retries} attempts",
+            original=last_error,
+        )
 
     def _parse_structured(
         self,
@@ -730,6 +848,18 @@ class LLMClient:
                 f"Expected dict from structured_classify, got {type(result).__name__}"
             )
         return result
+
+    def reset_spend(self) -> None:
+        """Reset the per-run token counter.
+
+        Call this before starting a new pipeline run to clear the spend cap
+        counter accumulated from the previous run::
+
+            client.reset_spend()
+            result = await client.chat_completion(...)
+        """
+        self._total_tokens = 0
+        logger.debug("llm.spend_reset")
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 

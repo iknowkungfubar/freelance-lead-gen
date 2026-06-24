@@ -789,8 +789,17 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         await self._context.add_cookies(cookies)  # type: ignore[union-attr]
         logger.info("browser.cookies_set", count=len(cookies))
 
+    _cookies_security_warned: ClassVar[bool] = False
+
     async def save_cookies(self, path: str | Path) -> None:
         """Serialize all cookies to a JSON file.
+
+        .. warning::
+
+           Cookies are saved as **plain JSON** without encryption.  In
+           production, ensure ``browser_data/`` resides on an encrypted
+           filesystem (LUKS, FileVault, etc.) or use a dedicated secret
+           store.
 
         Parameters
         ----------
@@ -799,6 +808,17 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
         """
         import json
+
+        if not self._cookies_security_warned:
+            logger.warning(
+                "browser.cookies_unencrypted",
+                message=(
+                    "Cookies are being saved as plain JSON without encryption. "
+                    "In production, ensure browser_data/ is on an encrypted "
+                    "filesystem (LUKS, FileVault, etc.)."
+                ),
+            )
+            type(self)._cookies_security_warned = True
 
         cookies = await self.get_cookies()
         path = Path(path)

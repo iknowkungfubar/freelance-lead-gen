@@ -141,6 +141,7 @@ class DiscoveryScheduler:
 
         # Graceful shutdown signal handling.
         self._shutdown_event = asyncio.Event()
+        self._shutdown_task: asyncio.Task | None = None
 
     # ── Properties ──────────────────────────────────────────────────────
 
@@ -247,6 +248,18 @@ class DiscoveryScheduler:
 
         # Shut down APScheduler (waits for running jobs up to grace_period).
         self._scheduler.shutdown(wait=True)
+
+        # If a shutdown task was created by a signal handler, wait for it
+        # only if we are not *inside* that task (avoid circular await).
+        if (
+            self._shutdown_task is not None
+            and not self._shutdown_task.done()
+            and self._shutdown_task is not asyncio.current_task()
+        ):
+            try:
+                await self._shutdown_task
+            except Exception as exc:
+                logger.warning("scheduler.stop_task_failed", error=str(exc))
 
         self._running = False
         self._shutdown_event.set()
@@ -531,11 +544,25 @@ class DiscoveryScheduler:
         return self._stats.total_leads >= self._daily_cap
 
     def _signal_handler(self, sig: signal.Signals) -> Callable[[], None]:
-        """Build a signal handler for graceful shutdown."""
+        """Build a signal handler for graceful shutdown.
+
+        Saves the shutdown task so :meth:`stop` can await it, and attaches
+        a done callback that logs any exceptions raised during shutdown.
+        """
+
+        def _log_stop_error(task: asyncio.Task[None]) -> None:
+            try:
+                exc = task.exception()
+                if exc is not None:
+                    logger.error("scheduler.signal_stop_failed", error=str(exc))
+            except asyncio.CancelledError:
+                pass
 
         def _handle() -> None:
             logger.info("scheduler.signal_received", signal=sig.name)
-            asyncio.ensure_future(self.stop())
+            task = asyncio.ensure_future(self.stop())
+            task.add_done_callback(_log_stop_error)
+            self._shutdown_task = task
 
         return _handle
 

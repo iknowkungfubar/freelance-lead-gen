@@ -620,11 +620,21 @@ class ProfileMatcher:
 # ── Fuzzy matching ─────────────────────────────────────────────────────────────
 
 
+def _bigrams(s: str) -> set[str]:
+    """Return the set of character bigrams for *s*."""
+    return {s[i:i+2] for i in range(len(s) - 1)}
+
+
 def _fuzzy_match(a: str, b: str, threshold: float = 0.8) -> bool:
     """Return *True* if *a* and *b* are similar enough via fuzzy matching.
 
     Uses :class:`difflib.SequenceMatcher` ratio and handles common
     abbreviations and synonyms.
+
+    An O(n) character-bigram pre-check skips the expensive
+    :class:`SequenceMatcher` call (O(n*m)) when the two strings share
+    no character bigrams, which eliminates the vast majority of
+    unrelated-pair comparisons in the hot loop.
 
     Parameters
     ----------
@@ -643,6 +653,11 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.8) -> bool:
     # Direct substring containment is an easy win.
     if a in b or b in a:
         return True
+
+    # Bigram pre-check: if they share no character bigrams, they're
+    # almost certainly unrelated — skip the expensive SequenceMatcher.
+    if not _bigrams(a) & _bigrams(b):
+        return False
 
     ratio = SequenceMatcher(None, a, b).ratio()
     if ratio >= threshold:

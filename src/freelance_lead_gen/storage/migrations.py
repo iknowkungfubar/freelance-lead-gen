@@ -168,6 +168,22 @@ MIGRATIONS: list[Migration] = [
         ],
     ),
     Migration(
+        migration_id="002_index_score",
+        description="Add indexes for score-based queries and filtered searches",
+        up=[
+            # Composite index for filtered searches (status + score).
+            """
+            CREATE INDEX IF NOT EXISTS idx_opportunities_status_score
+                ON opportunities(status, score)
+            """,
+            # Index for score range queries alone.
+            """
+            CREATE INDEX IF NOT EXISTS idx_opportunities_score
+                ON opportunities(score)
+            """,
+        ],
+    ),
+    Migration(
         migration_id="002_fts_triggers",
         description="Add FTS5 content-synchronisation triggers",
         up=[

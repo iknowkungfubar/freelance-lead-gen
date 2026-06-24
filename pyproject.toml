@@ -46,7 +46,7 @@ dependencies = [
     "textual>=0.52",
     "textual-plotext>=1.0",
     # Scheduling
-    "apscheduler>=3.10",
+    "apscheduler>=3.11.0",
     # Utilities
     "python-dotenv>=1.0",
     "tiktoken>=0.7",

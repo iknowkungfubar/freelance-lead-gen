@@ -594,14 +594,20 @@ class LeadGenOrchestrator:
             logger.info("orchestrator.discovery_skipped_no_agent")
             return []
 
+        # Capture the timestamp *before* discovery so we can retrieve exactly
+        # the opportunities created in this cycle, rather than relying on
+        # the DISCOVERED status (which may include stale rows from earlier
+        # cycles that were never processed).
+        cycle_start_time = datetime.now(UTC)
+
         try:
             cycle_report = await self._discovery.run_discovery_cycle()
             report.total_discovered = cycle_report.total_new
             report.total_errors += cycle_report.total_errors
 
-            # Load the newly discovered opportunities from the repository.
+            # Load the newly discovered opportunities by created_at range.
             discovered = await self._repository.search(
-                status=LeadStatus.DISCOVERED,
+                date_from=cycle_start_time,
                 limit=cycle_report.total_new or 100,
             )
 
@@ -696,42 +702,52 @@ class LeadGenOrchestrator:
         )
 
         drafts: list[OutboundDraft] = []
+        sem = asyncio.Semaphore(5)  # Limit concurrent LLM calls.
 
-        for opp in qualified:
-            if self._check_shutdown(report):
-                return drafts
+        async def _draft_one(opp: LeadOpportunity) -> tuple[LeadOpportunity, OutboundDraft] | None:
+            """Generate a draft for one opportunity, returning ``None`` on failure."""
+            async with sem:
+                if self._check_shutdown(report):
+                    return None
+                try:
+                    draft = await self._personalization.generate_draft(
+                        opp,
+                        profile,
+                        max_retries_on_quality=2,
+                    )
 
-            try:
-                draft = await self._personalization.generate_draft(
-                    opp,
-                    profile,
-                    max_retries_on_quality=2,
-                )
-                drafts.append(draft)
-                report.total_drafted += 1
+                    opp.status = LeadStatus.DRAFTED
 
-                # Update pipeline context.
-                opp.status = LeadStatus.DRAFTED
+                    logger.debug(
+                        "orchestrator.draft_created",
+                        opportunity_id=opp.id,
+                        draft_id=draft.id,
+                    )
+                    return (opp, draft)
 
-                logger.debug(
-                    "orchestrator.draft_created",
-                    opportunity_id=opp.id,
-                    draft_id=draft.id,
-                )
+                except Exception as exc:
+                    report.total_errors += 1
+                    report.errors.append({
+                        "phase": PipelinePhase.PERSONALIZATION,
+                        "opportunity_id": opp.id,
+                        "message": str(exc),
+                    })
+                    logger.warning(
+                        "orchestrator.draft_failed",
+                        opportunity_id=opp.id,
+                        error=str(exc),
+                    )
+                    return None  # Partial completion — continue with other opps.
 
-            except Exception as exc:
-                report.total_errors += 1
-                report.errors.append({
-                    "phase": PipelinePhase.PERSONALIZATION,
-                    "opportunity_id": opp.id,
-                    "message": str(exc),
-                })
-                logger.warning(
-                    "orchestrator.draft_failed",
-                    opportunity_id=opp.id,
-                    error=str(exc),
-                )
-                # Continue with next opportunity — partial completion.
+        tasks = [_draft_one(opp) for opp in qualified]
+        results = await asyncio.gather(*tasks)
+
+        for opp_result in results:
+            if opp_result is None:
+                continue
+            _opp, draft = opp_result
+            drafts.append(draft)
+            report.total_drafted += 1
 
         logger.info(
             "orchestrator.phase_personalization_completed",

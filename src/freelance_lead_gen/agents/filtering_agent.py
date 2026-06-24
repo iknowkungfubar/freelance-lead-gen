@@ -27,6 +27,7 @@ from freelance_lead_gen.models.opportunity import (
     LeadScoringResult,
     LeadStatus,
 )
+from freelance_lead_gen.storage.database import get_session_factory
 from freelance_lead_gen.storage.repository import OpportunityRepository
 
 logger = structlog.get_logger(__name__)
@@ -238,6 +239,17 @@ class FilteringPipeline:
         # Track non-disqualified opportunities and their LLM tasks together.
         llm_targets: list[tuple[LeadOpportunity, int]] = []  # (opp, rule_score)
 
+        # Open a shared session so all persists in this batch share one
+        # transaction instead of creating a new connection per opportunity.
+        # Gracefully falls back to per-call sessions if the DB isn't ready
+        # (e.g. in tests with mock repositories).
+        _shared_session = None
+        if persist:
+            try:
+                _shared_session = get_session_factory()()
+            except RuntimeError:
+                pass  # No DB engine — individual persists will handle it.
+
         for opp in opportunities:
             # ── Step 1: Rule-based disqualification ──────────────────────
             score_result = self._profile_matcher.score_opportunity(opp)
@@ -248,7 +260,7 @@ class FilteringPipeline:
                 opp.notes = score_result["disqualification_reason"]
                 report.disqualified_count += 1
                 if persist:
-                    await self._persist_result(opp)
+                    await self._persist_result(opp, session=_shared_session)
                 logger.info(
                     "filtering.disqualified",
                     opportunity_id=opp.id,
@@ -269,7 +281,7 @@ class FilteringPipeline:
                 if opp.status == LeadStatus.QUALIFIED:
                     qualified.append(opp)
                 if persist:
-                    await self._persist_result(opp)
+                    await self._persist_result(opp, session=_shared_session)
 
         # ── Await all LLM classifications ────────────────────────────────
         if use_llm and llm_targets:
@@ -313,7 +325,7 @@ class FilteringPipeline:
                     qualified.append(opp)
 
                 if persist:
-                    await self._persist_result(opp)
+                    await self._persist_result(opp, session=_shared_session)
 
         # ── Tally report ─────────────────────────────────────────────────
         for opp in opportunities:
@@ -351,6 +363,16 @@ class FilteringPipeline:
             errors=report.errors,
             elapsed_seconds=report.elapsed_seconds,
         )
+
+        # Commit (or rollback) the shared session.
+        if _shared_session is not None:
+            try:
+                await _shared_session.commit()
+            except Exception:
+                await _shared_session.rollback()
+                raise
+            finally:
+                await _shared_session.close()
 
         return qualified, report
 
@@ -478,10 +500,27 @@ class FilteringPipeline:
             "reasoning": llm_result.reasoning,
         }
 
-    async def _persist_result(self, opportunity: LeadOpportunity) -> None:
-        """Persist scoring results to the database."""
+    async def _persist_result(
+        self,
+        opportunity: LeadOpportunity,
+        *,
+        session: Any = None,
+    ) -> None:
+        """Persist scoring results to the database.
+
+        When *session* is provided, the update is performed within that
+        session (allowing the caller to share a single transaction across
+        many persists).  Otherwise, each call opens its own session.
+        """
         try:
-            await self._repository.update(opportunity)
+            if session is not None:
+                from sqlalchemy.ext.asyncio import AsyncSession
+
+                assert isinstance(session, AsyncSession)
+                repo = OpportunityRepository(session)
+                await repo.update(opportunity)
+            else:
+                await self._repository.update(opportunity)
         except Exception as exc:
             logger.warning(
                 "filtering.persist_failed",

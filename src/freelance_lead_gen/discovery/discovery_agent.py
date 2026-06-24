@@ -187,7 +187,18 @@ class DiscoveryAgent:
             )
 
         if not self._browser.is_running:
-            await self._browser.start()
+            try:
+                await self._browser.start()
+            except Exception as exc:
+                logger.warning(
+                    "discovery_agent.browser_start_failed",
+                    error=str(exc),
+                    hint=(
+                        "Continuing without a browser — HTTP-only platforms "
+                        "(RemoteOK, YC Work) will still work, but "
+                        "browser-based platforms (Upwork, LinkedIn) will fail."
+                    ),
+                )
 
         # Resolve extractors for any enabled platforms that don't have one.
         for platform_name in self._enabled_platforms:

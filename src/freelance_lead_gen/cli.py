@@ -27,10 +27,87 @@ from freelance_lead_gen.config.settings import get_settings
 from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
 from freelance_lead_gen.models.opportunity import LeadStatus
 from freelance_lead_gen.storage.database import init_db
+from freelance_lead_gen.storage.migrations import apply_migrations
 from freelance_lead_gen.storage.repository import DatabaseError, OpportunityRepository
 
 logger = structlog.get_logger(__name__)
 console = Console()
+
+
+# ── Safe error helper ──────────────────────────────────────────────────────────
+
+
+def _safe_error(msg: str, exc: Exception) -> None:
+    """Log the full exception details and print a sanitised message to the user.
+
+    The full exception (which may contain API keys, file paths, or other
+    sensitive information) is written to the structured log with traceback.
+    The user only sees a generic message that won't leak internals.
+    """
+    logger.error(msg, exc_info=exc)
+    click.echo("An unexpected error occurred.  Please check the logs for details.", err=True)
+
+
+def _validate_settings() -> list[str]:
+    """Run pre-flight checks on the current settings and return a list of
+    validation errors (empty if everything is OK).
+
+    Checks:
+    - ``LLM_API_KEY`` is set and non-empty.
+    - ``DATABASE_PATH`` points to a writable location.
+    - At least one search query is configured.
+    """
+    from pathlib import Path
+
+    from freelance_lead_gen.config.settings import get_settings
+
+    errors: list[str] = []
+
+    try:
+        settings = get_settings()
+    except Exception as exc:
+        errors.append(f"Failed to load settings: {exc}")
+        return errors
+
+    # LLM_API_KEY
+    key = settings.llm.api_key
+    if not key or key == "***":
+        errors.append(
+            "LLM_API_KEY is not set.  Set it in your .env file or environment "
+            "and ensure it is a valid API key."
+        )
+
+    # DATABASE_PATH writable
+    db_path = settings.database.database_url
+    if db_path and db_path != "sqlite+aiosqlite:///:memory:":
+        # Extract the path from the SQLAlchemy URL.
+        url_str = str(db_path)
+        if url_str.startswith("sqlite+aiosqlite:///"):
+            file_path_str = url_str[len("sqlite+aiosqlite:///"):]
+            if file_path_str:
+                p = Path(file_path_str)
+                parent = p.parent
+                try:
+                    parent.mkdir(parents=True, exist_ok=True)
+                    # Try to touch the file to verify write access.
+                    test_file = parent / ".write_test"
+                    test_file.touch()
+                    test_file.unlink()
+                except (OSError, PermissionError) as exc:
+                    errors.append(
+                        f"Database path is not writable: {file_path_str} "
+                        f"(parent directory: {parent}).  Error: {exc}"
+                    )
+
+    # Search queries.
+    queries = settings.discovery.queries
+    if not queries or all(not q.strip() for q in queries):
+        errors.append(
+            "No search queries configured.  Set DISCOVERY_QUERIES in your "
+            "settings or environment (a comma-separated list of search terms)."
+        )
+
+    return errors
 
 
 # ── Main CLI group ────────────────────────────────────────────────────────────
@@ -52,17 +129,35 @@ def init() -> None:
     Runs the database migration to create all required tables.  Safe to run
     multiple times — migrations are idempotent.
     """
+    # Pre-flight config validation.
+    validation_errors = _validate_settings()
+    if validation_errors:
+        for err in validation_errors:
+            click.echo(f"  [ERROR] {err}", err=True)
+        click.echo("\nFix the above configuration issues and try again.", err=True)
+        sys.exit(1)
+
     try:
         asyncio.run(_do_init())
         click.echo("Database initialised successfully.")
     except Exception as exc:
-        click.echo(f"Failed to initialise database: {exc}", err=True)
+        _safe_error("Failed to initialise database", exc)
         sys.exit(1)
+
+
+async def _ensure_db() -> None:
+    """Ensure the database is initialised and migrations are applied.
+
+    Call this from every CLI command that needs a working database,
+    instead of calling :func:`init_db` directly.
+    """
+    await init_db()
+    await apply_migrations()
 
 
 async def _do_init() -> None:
     """Async implementation of the init command."""
-    await init_db()
+    await _ensure_db()
 
 
 # ── discover ──────────────────────────────────────────────────────────────────
@@ -79,22 +174,19 @@ def discover(headless: bool) -> None:
     try:
         asyncio.run(_do_discover(headless=headless))
     except (RuntimeError, DatabaseError) as exc:
-        click.echo(f"Error: {exc}", err=True)
+        _safe_error("Command failed", exc)
         sys.exit(1)
     except Exception as exc:
-        click.echo(f"Unexpected error: {exc}", err=True)
+        _safe_error("Command failed with unexpected error", exc)
         sys.exit(1)
 
 
 async def _do_discover(headless: bool) -> None:
     """Async implementation of the discover command."""
     try:
-        await init_db()
+        await _ensure_db()
     except Exception as exc:
-        click.echo(
-            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
-            err=True,
-        )
+        _safe_error("Database not initialised", exc)
         return
 
     settings = get_settings()
@@ -154,22 +246,19 @@ def pipeline(discover: bool, headless: bool) -> None:
     try:
         asyncio.run(_do_pipeline(run_discovery=discover, headless=headless))
     except (RuntimeError, DatabaseError) as exc:
-        click.echo(f"Error: {exc}", err=True)
+        _safe_error("Command failed", exc)
         sys.exit(1)
     except Exception as exc:
-        click.echo(f"Unexpected error: {exc}", err=True)
+        _safe_error("Command failed with unexpected error", exc)
         sys.exit(1)
 
 
 async def _do_pipeline(run_discovery: bool, headless: bool) -> None:
     """Async implementation of the pipeline command."""
     try:
-        await init_db()
+        await _ensure_db()
     except Exception as exc:
-        click.echo(
-            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
-            err=True,
-        )
+        _safe_error("Database not initialised", exc)
         return
 
     settings = get_settings()
@@ -226,22 +315,19 @@ def review() -> None:
     try:
         asyncio.run(_do_review())
     except (RuntimeError, DatabaseError) as exc:
-        click.echo(f"Error: {exc}", err=True)
+        _safe_error("Command failed", exc)
         sys.exit(1)
     except Exception as exc:
-        click.echo(f"Unexpected error: {exc}", err=True)
+        _safe_error("Command failed with unexpected error", exc)
         sys.exit(1)
 
 
 async def _do_review() -> None:
     """Async implementation of the review command — launches the Textual TUI."""
     try:
-        await init_db()
+        await _ensure_db()
     except Exception as exc:
-        click.echo(
-            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
-            err=True,
-        )
+        _safe_error("Database not initialised", exc)
         return
 
     from freelance_lead_gen.ui.app import LeadGenTUI
@@ -272,10 +358,10 @@ def list_opportunities(
     try:
         asyncio.run(_do_list(status=status, platform=platform, limit=limit))
     except (RuntimeError, DatabaseError) as exc:
-        click.echo(f"Error: {exc}", err=True)
+        _safe_error("Command failed", exc)
         sys.exit(1)
     except Exception as exc:
-        click.echo(f"Unexpected error: {exc}", err=True)
+        _safe_error("Command failed with unexpected error", exc)
         sys.exit(1)
 
 
@@ -286,9 +372,9 @@ async def _do_list(
 ) -> None:
     """Async implementation of the list command."""
     try:
-        await init_db()
+        await _ensure_db()
     except Exception as exc:
-        click.echo(f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True)
+        _safe_error("Database not initialised", exc)
         return
 
     repo = OpportunityRepository()
@@ -354,19 +440,19 @@ def stats() -> None:
     try:
         asyncio.run(_do_stats())
     except (RuntimeError, DatabaseError) as exc:
-        click.echo(f"Error: {exc}", err=True)
+        _safe_error("Command failed", exc)
         sys.exit(1)
     except Exception as exc:
-        click.echo(f"Unexpected error: {exc}", err=True)
+        _safe_error("Command failed with unexpected error", exc)
         sys.exit(1)
 
 
 async def _do_stats() -> None:
     """Async implementation of the stats command."""
     try:
-        await init_db()
+        await _ensure_db()
     except Exception as exc:
-        click.echo(f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True)
+        _safe_error("Database not initialised", exc)
         return
 
     repo = OpportunityRepository()
@@ -405,10 +491,10 @@ def serve() -> None:
     try:
         asyncio.run(_do_serve())
     except (RuntimeError, DatabaseError) as exc:
-        click.echo(f"Error: {exc}", err=True)
+        _safe_error("Command failed", exc)
         sys.exit(1)
     except Exception as exc:
-        click.echo(f"Unexpected error: {exc}", err=True)
+        _safe_error("Command failed with unexpected error", exc)
         sys.exit(1)
 
 
@@ -419,12 +505,9 @@ async def _do_serve() -> None:
     discovery scheduler, and runs until the user presses Ctrl+C.
     """
     try:
-        await init_db()
+        await _ensure_db()
     except Exception as exc:
-        click.echo(
-            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
-            err=True,
-        )
+        _safe_error("Database not initialised", exc)
         return
 
     settings = get_settings()

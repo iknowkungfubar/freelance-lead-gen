@@ -37,12 +37,12 @@ def test_cli_list_help() -> None:
 
 
 def test_cli_stats_no_db() -> None:
-    """Verify 'stats' exits with code 1 when the database is not available.
+    """Verify 'stats' runs even without a pre-initialised database.
 
-    Since there is no running database engine, the stats command should
-    catch the error and exit with code 1.
+    The ``_ensure_db()`` helper is called by every command, so the
+    database is lazily initialised on first use.  This test verifies
+    that the stats command exits cleanly rather than crashing.
     """
     runner = CliRunner()
     result = runner.invoke(main, ["stats"])
-    assert result.exit_code == 1
-    assert "Error" in result.output or "error" in result.output
+    assert result.exit_code == 0
