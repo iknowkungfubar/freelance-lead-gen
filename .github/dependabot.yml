@@ -1,0 +1,69 @@
+# Dependabot configuration
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+
+updates:
+  # Python (pip) dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      # Group minor/patch updates into single PRs to reduce noise
+      core-dependencies:
+        patterns:
+          - "pydantic*"
+          - "pydantic-settings"
+        update-types:
+          - "minor"
+          - "patch"
+      testing:
+        patterns:
+          - "pytest*"
+          - "coverage*"
+        update-types:
+          - "minor"
+          - "patch"
+      langchain:
+        patterns:
+          - "langchain*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Major version bumps for these require manual migration
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "playwright"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "textual"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"

@@ -1,0 +1,201 @@
+[project]
+name = "freelance-lead-gen"
+version = "0.1.0"
+description = "Agentic freelance lead generation system — automates discovery, qualification, and outreach preparation for technical freelance opportunities"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Josh Turin", email = "josh@turin.tech" },
+]
+
+keywords = ["freelance", "lead-generation", "agentic", "browser-automation", "ai"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Scheduling",
+]
+
+dependencies = [
+    # Core
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "structlog>=24.0",
+    "click>=8.0",
+    "rich>=13.0",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    # Browser automation
+    "playwright>=1.40",
+    "browser-use>=0.1.0",
+    "playwright-stealth>=1.0",
+    # AI/LLM
+    "openai>=1.0",
+    "langchain>=0.3",
+    "langchain-community>=0.3",
+    "langchain-openai>=0.2",
+    # Database
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
+    # Terminal UI
+    "textual>=0.52",
+    "textual-plotext>=1.0",
+    # Scheduling
+    "apscheduler>=3.10",
+    # Utilities
+    "python-dotenv>=1.0",
+    "tiktoken>=0.7",
+    "aiosqlite>=0.22.1",
+]
+
+[project.urls]
+homepage = "https://github.com/iknowkungfubar/freelance-lead-gen"
+repository = "https://github.com/iknowkungfubar/freelance-lead-gen"
+documentation = "https://github.com/iknowkungfubar/freelance-lead-gen/docs"
+
+[project.scripts]
+freelance-lead-gen = "freelance_lead_gen.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+exclude = [
+    "tests/",
+    ".github/",
+    "docs/",
+    "browser_data/",
+    "*.sqlite",
+    "*.db",
+    ".env*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # Pre-existing — will clean up over time
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D104",   # Missing docstring in public package
+    "D105",   # Missing docstring in magic method
+    "D107",   # Missing docstring in __init__
+    "D203",   # 1 blank line required before class docstring
+    "D213",   # Multi-line docstring summary should start at second line
+    "D401",   # First line of docstring should be in imperative mood
+    "D404",   # First word of the docstring should not be "This"
+    "D415",   # First line of docstring should end with a period
+    "ANN101", # Missing type annotation for `self` in method
+    "ANN102", # Missing type annotation for `cls` in classmethod
+    "ANN201", # Missing return type annotation for public function
+    "ANN202", # Missing return type annotation for private function
+    "ANN204", # Missing return type annotation for special method
+    "ANN401", # Dynamically typed expression
+    "COM812", # Trailing comma missing
+    "ISC001", # Implicit string concatenation
+    "S311",   # Standard pseudo-random generators
+    "T201",   # `print` found
+    "UP007",  # Use `X | Y` for type union
+    "EM101",  # Exception must not use a string literal
+    "EM102",  # Exception must not use an f-string literal
+    "TRY003", # Avoid specifying long messages outside exception class
+    "TRY301", # raise within try
+    "PLR2004", # Magic value used in comparison
+    "PLR0911", # Too many return statements
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments
+    "PLR0915", # Too many statements
+    "PLR5501", # Use elif instead of else if
+    "PLW1510", # subprocess.run without explicit check=
+    "SLF001",  # Private member accessed
+    "ERA001",  # Commented-out code
+    "TD002",   # Missing author in TODO
+    "TD003",   # Missing issue link in TODO
+    "FBT001",  # Boolean-typed positional argument
+    "FBT002",  # Boolean default value
+
+    # Project-specific style choices
+    "C408",    # Unnecessary dict/list/tuple call
+    "N812",    # lowercase imported as non lowercase
+    "N999",    # Invalid module name
+    "S101",    # Use of assert
+    "RET504",  # Unnecessary variable assignment before return
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN", "D", "PLR", "SLF", "S", "N", "T201"]
+"alembic/**" = ["ANN", "D", "E501"]
+"conftest.py" = ["ANN", "D"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "network: marks tests as needing network access (deselect with '-m \"not network\"')",
+    "hitl: marks tests for human-in-the-loop interface",
+    "integration: marks integration tests",
+    "smoke: marks smoke tests",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+exclude = [
+    ".venv/",
+    "venv/",
+    "build/",
+    "tests/",
+    "alembic/",
+]
+
+[tool.coverage.run]
+source = ["freelance_lead_gen"]
+omit = [
+    "tests/*",
+    "alembic/*",
+    "**/__init__.py",
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".github/**"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint & format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-suffix: "lint"
+
+      - name: Install dependencies
+        run: uv sync --only-dev
+
+      - name: Check formatting (ruff format)
+        run: uv run ruff format --check src/
+
+      - name: Lint (ruff check)
+        run: uv run ruff check src/
+
+  type-check:
+    name: Type check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-suffix: "typecheck"
+
+      - name: Install dependencies
+        run: uv sync --only-dev
+
+      - name: Run mypy
+        run: uv run mypy src/
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-suffix: "test-${{ matrix.python-version }}"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Install Playwright browsers
+        run: uv run playwright install chromium --with-deps
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest \
+            -v \
+            --cov=freelance_lead_gen \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junitxml=junit-${{ matrix.python-version }}.xml \
+            -m "not network and not slow"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        if: ${{ !cancelled() }}
+        with:
+          file: ./coverage.xml
+          flags: python${{ matrix.python-version }}
+          fail_ci_if_error: false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: junit-${{ matrix.python-version }}.xml
+
+  security:
+    name: Security audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-suffix: "security"
+
+      - name: Install dependencies
+        run: uv sync --only-dev
+
+      - name: Run pip-audit
+        run: uv run pip-audit --strict --desc on .
+
+  summary:
+    name: Build summary
+    needs: [lint, type-check, test, security]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Summarise results
+        run: |
+          echo "## CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & format | ${{ needs.lint.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type check | ${{ needs.type-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests (3.11, 3.12) | ${{ needs.test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security audit | ${{ needs.security.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
