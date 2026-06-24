@@ -16,9 +16,9 @@ from freelance_lead_gen.discovery.extractor import (
 from freelance_lead_gen.discovery.scheduler import DiscoveryScheduler
 
 __all__ = [
+    "DiscoveryAgent",
+    "DiscoveryScheduler",
+    "GenericPlaywrightExtractor",
     "ManagedBrowser",
     "RawLead",
-    "GenericPlaywrightExtractor",
-    "DiscoveryScheduler",
-    "DiscoveryAgent",
 ]

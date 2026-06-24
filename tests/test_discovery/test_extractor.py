@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from freelance_lead_gen.discovery.browser import ManagedBrowser
 from freelance_lead_gen.discovery.extractor import (
     GenericPlaywrightExtractor,
     RawLead,
-    _CAPTCHA_INDICATORS,
-    _LOGIN_REDIRECT_INDICATORS,
 )
-
 
 # ── RawLead ─────────────────────────────────────────────────────────────────────
 
@@ -233,9 +229,9 @@ class TestJobIdExtraction:
     def test_from_data_attribute(self) -> None:
         """Verify data-job-id attribute takes priority."""
         card = MagicMock()
-        card.get_attribute.side_effect = lambda name: {
+        card.get_attribute.side_effect = {
             "data-job-id": "custom-id-456",
-        }.get(name)
+        }.get
 
         job_id = GenericPlaywrightExtractor._extract_job_id(
             "https://example.com/jobs/abc-123", card

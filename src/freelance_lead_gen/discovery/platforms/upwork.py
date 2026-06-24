@@ -16,13 +16,15 @@ scoring, login challenges).  This extractor implements:
 
 from __future__ import annotations as _annotations
 
-import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -111,6 +113,7 @@ class UpworkExtractor(BasePlatformExtractor):
         Optional email for login.  If omitted, attempts cookie-based auth.
     password : str or None
         Optional password for login.
+
     """
 
     def __init__(
@@ -120,6 +123,8 @@ class UpworkExtractor(BasePlatformExtractor):
         rate_limit: RateLimitConfig | None = None,
         email: str | None = None,
         password: str | None = None,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__(
             browser,
@@ -131,9 +136,11 @@ class UpworkExtractor(BasePlatformExtractor):
                 max_pages_per_session=8,
                 cooldown_after_session=90.0,
             ),
+            credentials=credentials,
+            settings=settings,
         )
-        self._email = email
-        self._password = password
+        self._email = email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        self._password = password or (credentials or {}).get("password")
 
     # ── BasePlatformExtractor interface ─────────────────────────────────
 
@@ -156,6 +163,7 @@ class UpworkExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if authentication was successful.
+
         """
         # Check if already authenticated.
         if await self._is_authenticated():
@@ -217,7 +225,7 @@ class UpworkExtractor(BasePlatformExtractor):
             return True
 
         except Exception as exc:
-            logger.error("upwork.login_exception", error=str(exc))
+            logger.exception("upwork.login_exception", error=str(exc))
             return False
 
     async def search(self, query: str) -> None:
@@ -227,6 +235,7 @@ class UpworkExtractor(BasePlatformExtractor):
         ----------
         query : str
             Search term for filtering jobs.
+
         """
         url = _UPWORK_SEARCH_URL_TEMPLATE.format(query=query.replace(" ", "+"))
 
@@ -243,7 +252,7 @@ class UpworkExtractor(BasePlatformExtractor):
             await self._random_scroll()
 
         except Exception as exc:
-            logger.error("upwork.search_navigation_error", query=query, error=str(exc))
+            logger.exception("upwork.search_navigation_error", query=query, error=str(exc))
             # If navigation fails, we may still be on a valid page.
             raise
 
@@ -253,6 +262,7 @@ class UpworkExtractor(BasePlatformExtractor):
         Returns
         -------
         list of RawLead
+
         """
         leads: list[RawLead] = []
 
@@ -284,6 +294,7 @@ class UpworkExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if the next page was loaded.
+
         """
         try:
             next_btn = await self._browser.page.query_selector(_UPWORK_NEXT_PAGE_SELECTOR)
@@ -309,7 +320,7 @@ class UpworkExtractor(BasePlatformExtractor):
 
     # ── Card parsing ────────────────────────────────────────────────────
 
-    async def _parse_card(self, card: Any) -> RawLead | None:  # noqa: ANN401
+    async def _parse_card(self, card: Any) -> RawLead | None:
         """Parse a single job card element into a :class:`RawLead`."""
         title = await self._get_el_text(card, _UPWORK_TITLE_SELECTOR)
         if not title:
@@ -343,7 +354,7 @@ class UpworkExtractor(BasePlatformExtractor):
             skills=skills,
         )
 
-    async def _parse_skills(self, card: Any) -> list[str]:  # noqa: ANN401
+    async def _parse_skills(self, card: Any) -> list[str]:
         """Extract skill labels from a job card."""
         try:
             skill_els = await card.query_selector_all(_UPWORK_SKILLS_SELECTOR)
@@ -437,6 +448,7 @@ class UpworkExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if a 2FA challenge is visible.
+
         """
         try:
             return await self._browser.is_element_visible(_UPWORK_2FA_INPUT_SELECTOR)
@@ -446,7 +458,7 @@ class UpworkExtractor(BasePlatformExtractor):
     # ── Element helpers ─────────────────────────────────────────────────
 
     @staticmethod
-    async def _get_el_text(card: Any, selector: str) -> str:  # noqa: ANN401
+    async def _get_el_text(card: Any, selector: str) -> str:
         """Get inner text from a child of *card* (or empty string)."""
         try:
             el = await card.query_selector(selector)
@@ -455,7 +467,7 @@ class UpworkExtractor(BasePlatformExtractor):
             return ""
 
     @staticmethod
-    async def _get_el_href(card: Any, selector: str) -> str | None:  # noqa: ANN401
+    async def _get_el_href(card: Any, selector: str) -> str | None:
         """Get ``href`` from a child anchor."""
         try:
             el = await card.query_selector(selector)

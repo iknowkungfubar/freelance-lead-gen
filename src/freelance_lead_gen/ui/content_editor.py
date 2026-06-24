@@ -15,17 +15,19 @@ from __future__ import annotations as _annotations
 
 import difflib
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static, TextArea
 
-from freelance_lead_gen.models.opportunity import OutboundDraft
-from freelance_lead_gen.storage.repository import OpportunityRepository
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
+
+    from freelance_lead_gen.models.opportunity import OutboundDraft
+    from freelance_lead_gen.storage.repository import OpportunityRepository
 
 # ── Colours (matching Tokyo Night palette) ───────────────────────────────
 
@@ -258,7 +260,7 @@ class ContentEditor(ModalScreen[None]):
                     body.splitlines(),
                     n=0,
                 )
-                if line.startswith("+") or line.startswith("-")
+                if line.startswith(("+", "-"))
             )
             changes = f"  [bold]{SUCCESS}▲+[/] [dim]{diff} changes[/]"
 

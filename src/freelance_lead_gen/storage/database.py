@@ -8,8 +8,7 @@ engine creation, disposal, and pragma configuration (WAL mode, foreign keys).
 from __future__ import annotations as _annotations
 
 import contextlib
-from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -21,6 +20,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from freelance_lead_gen.config.settings import get_settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 # ── Singleton engine (module-level) ──────────────────────────────────────────
 
@@ -77,6 +79,7 @@ async def init_db() -> AsyncEngine:
     -------
     AsyncEngine
         The initialised engine instance.
+
     """
     global _engine, _session_factory  # noqa: PLW0603
 
@@ -176,7 +179,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 # ── Connection pragmas ───────────────────────────────────────────────────────
 
 
-def _on_connect(dbapi_connection: Any, connection_record: Any) -> None:  # noqa: ANN401
+def _on_connect(dbapi_connection: Any, connection_record: Any) -> None:
     """Configure SQLite pragmas on each new connection.
 
     - Enables WAL mode for concurrent read/write performance.

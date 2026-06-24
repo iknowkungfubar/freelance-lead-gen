@@ -11,12 +11,13 @@ import abc
 import random
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from freelance_lead_gen.discovery.browser import ManagedBrowser
+if TYPE_CHECKING:
+    from freelance_lead_gen.discovery.browser import ManagedBrowser
 
 logger = structlog.get_logger(__name__)
 
@@ -101,7 +102,7 @@ class RawLead:
     """Raw HTML snippet of the listing card (for debugging / re-parsing)."""
 
     extracted_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+        default_factory=lambda: datetime.now(UTC).isoformat()
     )
     """ISO-format timestamp of extraction."""
 
@@ -135,6 +136,7 @@ class Extractor(abc.ABC):
         -------
         list of RawLead
             All leads found during this extraction run.
+
         """
         ...
 
@@ -177,9 +179,10 @@ class GenericPlaywrightExtractor(Extractor):
         If ``True``, click "next page" and continue extracting.
     next_page_selector : str or None
         CSS selector for the "next page" button / link.
+
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         browser: ManagedBrowser,
         *,
@@ -227,6 +230,7 @@ class GenericPlaywrightExtractor(Extractor):
         Returns
         -------
         list of RawLead
+
         """
         url = self._search_url_template.replace("{query}", search_query.replace(" ", "+"))
         logger.info("extractor.starting", platform=self._platform_name, query=search_query, url=url)
@@ -234,7 +238,7 @@ class GenericPlaywrightExtractor(Extractor):
         try:
             await self._browser.navigate(url, wait_until="networkidle", timeout_ms=60_000)
         except Exception as exc:
-            logger.error("extractor.navigation_failed", platform=self._platform_name, url=url, error=str(exc))
+            logger.exception("extractor.navigation_failed", platform=self._platform_name, url=url, error=str(exc))
             return []
 
         # CAPTCHA check.
@@ -319,7 +323,7 @@ class GenericPlaywrightExtractor(Extractor):
 
         return leads
 
-    async def _extract_card(self, card: Any) -> RawLead | None:  # noqa: ANN401
+    async def _extract_card(self, card: Any) -> RawLead | None:
         """Extract a single :class:`RawLead` from a Playwright element handle."""
         title = await self._get_card_text(card, self._title_selector) or ""
         if not title.strip():
@@ -370,7 +374,7 @@ class GenericPlaywrightExtractor(Extractor):
 
     # ── Element helpers ─────────────────────────────────────────────────
 
-    async def _get_card_text(self, card: Any, selector: str) -> str:  # noqa: ANN401
+    async def _get_card_text(self, card: Any, selector: str) -> str:
         """Get text content from a child element of *card*."""
         try:
             el = await card.query_selector(selector)
@@ -380,7 +384,7 @@ class GenericPlaywrightExtractor(Extractor):
             pass
         return ""
 
-    async def _get_card_href(self, card: Any, selector: str) -> str | None:  # noqa: ANN401
+    async def _get_card_href(self, card: Any, selector: str) -> str | None:
         """Get ``href`` from a child link element."""
         try:
             el = await card.query_selector(selector)
@@ -398,7 +402,7 @@ class GenericPlaywrightExtractor(Extractor):
         if not text:
             return None, None
 
-        # Match dollar amounts: $20–$50, $30-$60, $500, etc.
+        # Match dollar amounts: $20-$50, $30-$60, $500, etc.
         amounts = re.findall(r"\$?(\d+(?:,\d{3})*(?:\.\d+)?)", text.replace(",", ""))
         amounts = [float(a) for a in amounts]
 
@@ -410,7 +414,7 @@ class GenericPlaywrightExtractor(Extractor):
         return amounts[0], None
 
     @staticmethod
-    def _extract_job_id(url: str, card: Any) -> str:  # noqa: ANN401
+    def _extract_job_id(url: str, card: Any) -> str:
         """Extract a platform-native job ID from the card or URL."""
         import hashlib
 
@@ -437,6 +441,7 @@ class GenericPlaywrightExtractor(Extractor):
         -------
         bool
             *True* if navigation occurred, *False* if no next page.
+
         """
         if not self._next_page_selector:
             return False
@@ -462,8 +467,6 @@ class GenericPlaywrightExtractor(Extractor):
 
     async def _human_scroll(self) -> None:
         """Simulate a human scrolling down the page to trigger lazy content."""
-        import asyncio
-
         scroll_count = random.randint(2, 5)
         for _ in range(scroll_count):
             await self._browser.scroll("down", amount=random.randint(300, 800))
@@ -495,6 +498,7 @@ class GenericPlaywrightExtractor(Extractor):
         -------
         bool
             *True* if a CAPTCHA is detected.
+
         """
         try:
             content = await self._browser.page.content()
@@ -523,12 +527,13 @@ class GenericPlaywrightExtractor(Extractor):
         -------
         bool
             *True* if a login redirect is detected.
+
         """
         try:
             current_url = self._browser.page.url.lower()
 
             # Strip query params for comparison.
-            clean_original = original_url.split("?")[0].rstrip("/")
+            clean_original = original_url.split("?", maxsplit=1)[0].rstrip("/")
             clean_current = current_url.split("?")[0].rstrip("/")
 
             if clean_original != clean_current:

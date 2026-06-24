@@ -16,16 +16,18 @@ Usage::
 from __future__ import annotations as _annotations
 
 import uuid
-from collections.abc import Sequence
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
-from sqlalchemy import Column, DateTime, String, Table, Text, text
-from sqlalchemy.dialects.sqlite import TEXT as SQLITE_TEXT
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy import text
 
 from freelance_lead_gen.storage.database import get_engine
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncConnection
 
 logger = structlog.get_logger(__name__)
 
@@ -217,7 +219,7 @@ async def _record_migration(
     """Insert a record of the applied migration into the registry."""
     migration_id = migration.id
     description = migration.description
-    applied_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.now(timezone.utc).microsecond:06d}Z"
+    applied_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.now(UTC).microsecond:06d}Z"
     # Simple checksum: first 8 hex chars of a UUID based on the migration content.
     checksum = uuid.uuid5(uuid.NAMESPACE_DNS, "".join(migration.up)).hex[:8]
 
@@ -253,6 +255,7 @@ async def apply_migrations(*, to_id: str | None = None) -> list[str]:
     ------
     RuntimeError
         If the database engine has not been initialised.
+
     """
     engine = get_engine()
     applied: list[str] = []
@@ -277,7 +280,7 @@ async def apply_migrations(*, to_id: str | None = None) -> list[str]:
                     try:
                         await conn.execute(text(cleaned))
                     except Exception as exc:
-                        logger.error(
+                        logger.exception(
                             "migration.statement_failed",
                             id=migration.id,
                             statement=cleaned[:120],
@@ -305,6 +308,7 @@ async def get_migration_status() -> Sequence[dict[str, Any]]:
     list of dict
         Each dict has keys: ``id``, ``description``, ``applied`` (bool),
         ``applied_at`` (str or None).
+
     """
     engine = get_engine()
     async with engine.connect() as conn:

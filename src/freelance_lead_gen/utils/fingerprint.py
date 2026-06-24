@@ -8,8 +8,8 @@ properties that form a self-consistent profile.
 
 from __future__ import annotations as _annotations
 
+import contextlib
 import random
-import string
 from dataclasses import dataclass
 from typing import Literal
 
@@ -133,13 +133,11 @@ def _padded_ua_fuzz(ua: str) -> str:
         # Slightly alter the Chrome version number by ±1 in the last segment.
         parts = ua.split(" ")
         for i, p in enumerate(parts):
-            if p.startswith("Chrome/") or p.startswith("Firefox/"):
+            if p.startswith(("Chrome/", "Firefox/")):
                 base, version = p.split("/")
                 vernums = version.split(".")
-                try:
+                with contextlib.suppress(ValueError, IndexError):
                     vernums[-1] = str(max(0, int(vernums[-1]) + random.choice([-1, 0, 1])))
-                except (ValueError, IndexError):
-                    pass
                 parts[i] = f"{base}/{'.'.join(vernums)}"
                 break
         ua = " ".join(parts)
@@ -191,6 +189,7 @@ def generate_fingerprint(
     -------
     BrowserFingerprint
         A frozen dataclass with all fingerprint attributes.
+
     """
     if browser is None:
         browser = random.choice(["chrome", "firefox"])
@@ -238,9 +237,9 @@ def fingerprint_to_playwright_kwargs(fp: BrowserFingerprint) -> dict:
         "extra_http_headers": {
             "Accept-Language": fp.locale,
             "Sec-CH-UA": (
-                f'"Google Chrome";v="125", "Chromium";v="125", "Not_A Brand";v="24"'
+                '"Google Chrome";v="125", "Chromium";v="125", "Not_A Brand";v="24"'
                 if fp.browser_type == "chrome"
-                else f'"Firefox";v="127", "Firefox";v="127"'
+                else '"Firefox";v="127", "Firefox";v="127"'
             ),
         },
     }

@@ -7,10 +7,8 @@ time without code changes.  A cached singleton is exposed via
 
 from __future__ import annotations as _annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -158,7 +156,7 @@ class Settings(BaseSettings):
     # ── model_config set the env prefix at the parent level too ─────────
     # These nested models use their own env_prefix via SettingsConfigDict.
 
-    def model_post_init(self, __context: object) -> None:
+    def model_post_init(self, __context: object, /) -> None:
         """Resolve the .env file path relative to the project root.
 
         Walks up from the current working directory looking for ``.env``.

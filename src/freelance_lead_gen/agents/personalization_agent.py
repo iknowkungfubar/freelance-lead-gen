@@ -8,10 +8,9 @@ prompts and rigorous anti-AI tone enforcement.
 from __future__ import annotations as _annotations
 
 import asyncio
-import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -103,7 +102,7 @@ class PersonalizationReport:
     """Number of opportunities where drafting failed."""
     low_quality: int = 0
     """Number of drafts that failed quality checks."""
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     """When drafting started."""
     completed_at: datetime | None = None
     """When drafting completed."""
@@ -135,6 +134,7 @@ class PersonalizationAgent:
         provided.
     settings : Settings or None
         Application settings.
+
     """
 
     def __init__(
@@ -201,6 +201,7 @@ class PersonalizationAgent:
         ------
         DraftGenerationError
             If generation fails after all retries.
+
         """
         if profile is None:
             profile = TargetProfile.default()
@@ -217,11 +218,6 @@ class PersonalizationAgent:
         # Build the user content with opportunity + profile context.
         user_content = self._build_draft_context(opportunity, profile)
 
-        draft_kwargs: dict[str, Any] = {
-            "opportunity_id": opportunity.id,
-            "versions": [],
-            "subject": None,
-        }
 
         last_error: str | None = None
 
@@ -338,6 +334,7 @@ class PersonalizationAgent:
         -------
         list of OutboundDraft
             Generated drafts, ordered by quality score descending (best first).
+
         """
         if profile is None:
             profile = TargetProfile.default()
@@ -393,6 +390,7 @@ class PersonalizationAgent:
             With keys: ``score`` (int 0-100), ``issues`` (list of str),
             ``passed`` (bool), ``banned_phrases_found`` (list of str),
             ``ai_markers_found`` (list of str).
+
         """
         text_lower = text.lower()
         banned_found: list[str] = []
@@ -521,7 +519,7 @@ class PersonalizationAgent:
         # Penalty: perfect parallelism across paragraphs (AI hallmark).
         para_starts = re.findall(r"^([A-Z][^.]*\\.)", text, re.MULTILINE)
         if len(para_starts) >= 3:
-            unique_starts = len(set(p.split()[0] if p.split() else p for p in para_starts))
+            unique_starts = len({p.split()[0] if p.split() else p for p in para_starts})
             if unique_starts <= 1:
                 score -= 15
 

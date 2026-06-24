@@ -21,8 +21,8 @@ Actions
 from __future__ import annotations as _annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
@@ -47,6 +47,9 @@ from freelance_lead_gen.ui.widgets import (
     format_budget,
     format_timestamp,
 )
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
 
 # ── Messages ─────────────────────────────────────────────────────────────
 

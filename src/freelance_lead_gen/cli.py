@@ -14,15 +14,22 @@ Provides Click commands for all pipeline operations:
 from __future__ import annotations as _annotations
 
 import asyncio
+import signal
 import sys
 
 import click
 import structlog
+from rich.console import Console
+from rich.table import Column, Table
 
-from freelance_lead_gen.storage.database import close_db, init_db
+from freelance_lead_gen.config.settings import get_settings
+from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
+from freelance_lead_gen.models.opportunity import LeadStatus
+from freelance_lead_gen.storage.database import init_db
 from freelance_lead_gen.storage.repository import DatabaseError, OpportunityRepository
 
 logger = structlog.get_logger(__name__)
+console = Console()
 
 
 # ── Main CLI group ────────────────────────────────────────────────────────────
@@ -119,7 +126,76 @@ def list_opportunities(
     and score.  Results can be filtered by status, platform, and limited in
     count.
     """
-    click.echo("Listing opportunities... (not yet implemented in CLI)")
+    try:
+        asyncio.run(_do_list(status=status, platform=platform, limit=limit))
+    except (RuntimeError, DatabaseError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Unexpected error: {exc}", err=True)
+        sys.exit(1)
+
+
+async def _do_list(
+    status: str | None,
+    platform: str | None,
+    limit: int,
+) -> None:
+    """Async implementation of the list command."""
+    try:
+        await init_db()
+    except Exception as exc:
+        click.echo(f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True)
+        return
+
+    repo = OpportunityRepository()
+
+    # Parse status filter if provided.
+    status_filter: LeadStatus | None = None
+    if status:
+        try:
+            status_filter = LeadStatus(status.lower())
+        except ValueError:
+            click.echo(f"Invalid status: {status!r}. Valid values: {', '.join(s.value for s in LeadStatus)}", err=True)
+            return
+
+    opportunities = await repo.search(
+        status=status_filter,
+        platform=platform,
+        limit=limit,
+    )
+
+    if not opportunities:
+        click.echo("No opportunities found matching the current filters.")
+        return
+
+    # Build a rich table.
+    table = Table(
+        Column("ID", style="dim", no_wrap=True),
+        Column("Status"),
+        Column("Platform"),
+        Column("Score", justify="right"),
+        Column("Title"),
+        Column("Company"),
+        Column("Location"),
+        title="Opportunities",
+        title_style="bold",
+    )
+
+    for opp in opportunities:
+        score_str = str(opp.score) if opp.score is not None else "-"
+        table.add_row(
+            opp.id,
+            opp.status.value,
+            opp.platform,
+            score_str,
+            opp.title[:60],
+            opp.company or "-",
+            opp.location or "-",
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]{len(opportunities)} result(s)[/dim]")
 
 
 # ── stats ─────────────────────────────────────────────────────────────────────
@@ -144,7 +220,12 @@ def stats() -> None:
 
 async def _do_stats() -> None:
     """Async implementation of the stats command."""
-    engine = await init_db()
+    try:
+        await init_db()
+    except Exception as exc:
+        click.echo(f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True)
+        return
+
     repo = OpportunityRepository()
 
     stats_data = await repo.get_stats()
@@ -178,4 +259,63 @@ def serve() -> None:
     Launches the Textual-based terminal interface for interactive pipeline
     management, lead review, and dashboard monitoring.
     """
-    click.echo("Starting TUI... (not yet implemented in CLI)")
+    try:
+        asyncio.run(_do_serve())
+    except (RuntimeError, DatabaseError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Unexpected error: {exc}", err=True)
+        sys.exit(1)
+
+
+async def _do_serve() -> None:
+    """Async implementation of the serve command.
+
+    Initialises the database, creates a discovery agent, starts the
+    discovery scheduler, and runs until the user presses Ctrl+C.
+    """
+    try:
+        await init_db()
+    except Exception as exc:
+        click.echo(
+            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
+            err=True,
+        )
+        return
+
+    settings = get_settings()
+    agent = DiscoveryAgent(settings=settings)
+    await agent.initialize()
+
+    scheduler = agent.create_scheduler()
+
+    click.echo("Starting discovery scheduler...")
+    click.echo("Press Ctrl+C to stop.")
+    click.echo("")
+
+    try:
+        await scheduler.start()
+
+        # Wait for shutdown signal.
+        stop_event = asyncio.Event()
+
+        def _signal_handler() -> None:
+            click.echo("\nShutdown requested...")
+            stop_event.set()
+
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _signal_handler)
+            except (NotImplementedError, ValueError):
+                pass  # Windows or restricted environment.
+
+        await stop_event.wait()
+
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await scheduler.stop()
+        await agent.shutdown()
+        click.echo("Scheduler stopped.")

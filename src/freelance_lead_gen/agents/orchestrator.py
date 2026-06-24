@@ -9,30 +9,28 @@ and comprehensive statistics collection.
 from __future__ import annotations as _annotations
 
 import asyncio
+import contextlib
 import signal
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from freelance_lead_gen.agents.filtering_agent import (
     FilteringPipeline,
-    FilteringReport,
-    ScoringThresholds,
 )
 from freelance_lead_gen.agents.personalization_agent import (
     PersonalizationAgent,
-    PersonalizationReport,
 )
-from freelance_lead_gen.agents.profile_matcher import MatchingWeights, TargetProfile
+from freelance_lead_gen.agents.profile_matcher import TargetProfile
 from freelance_lead_gen.agents.verification_agent import (
     VerificationAgent,
     VerificationResult,
 )
 from freelance_lead_gen.config.settings import Settings, get_settings
-from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
 from freelance_lead_gen.llm import LLMClient
 from freelance_lead_gen.models.opportunity import (
     LeadOpportunity,
@@ -42,13 +40,16 @@ from freelance_lead_gen.models.opportunity import (
 from freelance_lead_gen.models.pipeline import PipelineState
 from freelance_lead_gen.storage.repository import OpportunityRepository
 
+if TYPE_CHECKING:
+    from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
+
 logger = structlog.get_logger(__name__)
 
 
 # ── Pipeline Phase Enum ────────────────────────────────────────────────────────
 
 
-class PipelinePhase(str):
+class PipelinePhase(StrEnum):
     """Human-readable phase labels for the orchestration pipeline."""
 
     DISCOVERY = "discovery"
@@ -99,7 +100,7 @@ class OrchestratorReport:
     errors: list[dict[str, str]] = field(default_factory=list)
     """Error details (phase, opportunity_id, message)."""
 
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     """When the pipeline run started."""
 
     completed_at: datetime | None = None
@@ -166,9 +167,10 @@ class LeadGenOrchestrator:
         Repository for persistence.
     llm_client : LLMClient or None
         Shared LLM client for all agents.
+
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         settings: Settings | None = None,
@@ -273,6 +275,7 @@ class LeadGenOrchestrator:
         -------
         OrchestratorReport
             Aggregated report covering all phases.
+
         """
         if self._is_running:
             msg = "Pipeline is already running"
@@ -285,7 +288,7 @@ class LeadGenOrchestrator:
             profile = TargetProfile.default()
 
         report = OrchestratorReport()
-        report.started_at = datetime.now(timezone.utc)
+        report.started_at = datetime.now(UTC)
 
         hitl_enabled = (
             run_hitl if run_hitl is not None else self._settings.hitl.enabled
@@ -310,7 +313,7 @@ class LeadGenOrchestrator:
             if not current_opps:
                 logger.info("orchestrator.no_opportunities")
                 report.success = True
-                report.completed_at = datetime.now(timezone.utc)
+                report.completed_at = datetime.now(UTC)
                 return report
 
             # ── Phase 2: Filtering ───────────────────────────────────────
@@ -328,7 +331,7 @@ class LeadGenOrchestrator:
             if not qualified:
                 logger.info("orchestrator.no_qualified_opportunities")
                 report.success = True
-                report.completed_at = datetime.now(timezone.utc)
+                report.completed_at = datetime.now(UTC)
                 return report
 
             # ── Phase 3: Personalisation ─────────────────────────────────
@@ -345,16 +348,14 @@ class LeadGenOrchestrator:
                 for opp in qualified:
                     draft = OutboundDraft(opportunity_id=opp.id)
                     draft.add_version("(draft generation skipped)")
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._repository.create_draft(draft)
-                    except Exception:
-                        pass
                     drafts.append(draft)
 
             if not drafts:
                 logger.info("orchestrator.no_drafts_generated")
                 report.success = True
-                report.completed_at = datetime.now(timezone.utc)
+                report.completed_at = datetime.now(UTC)
                 return report
 
             # ── Phase 4: Verification ────────────────────────────────────
@@ -391,10 +392,8 @@ class LeadGenOrchestrator:
                 # Auto-approve.
                 for draft, _ in verified_drafts:
                     draft.approve()
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._repository.update_draft(draft)
-                    except Exception:
-                        pass
                     report.total_reviewed += 1
 
             # ── Completion ───────────────────────────────────────────────
@@ -419,7 +418,7 @@ class LeadGenOrchestrator:
 
         finally:
             self._is_running = False
-            report.completed_at = datetime.now(timezone.utc)
+            report.completed_at = datetime.now(UTC)
 
             # Update lifetime stats.
             self._stats["runs"] += 1
@@ -481,6 +480,7 @@ class LeadGenOrchestrator:
             - ``"personalization"``: tuple of (list of OutboundDraft, PersonalizationReport)
             - ``"verification"``: list of (OutboundDraft, VerificationResult) tuples
             - ``"hitl"``: None
+
         """
         if profile is None:
             profile = TargetProfile.default()
@@ -782,7 +782,7 @@ class LeadGenOrchestrator:
         for result in results:
             if result is not None:
                 verified.append(result)
-                draft, v_result = result
+                _draft, v_result = result
                 if v_result.passed:
                     report.total_verified_pass += 1
                 else:
@@ -816,10 +816,8 @@ class LeadGenOrchestrator:
             for draft, v_result in verified_drafts:
                 if v_result.passed:
                     draft.approve()
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._repository.update_draft(draft)
-                    except Exception:
-                        pass
                     report.total_reviewed += 1
         else:
             logger.info(
@@ -830,10 +828,8 @@ class LeadGenOrchestrator:
                 if v_result.passed:
                     # Update the opportunity status to indicate it's awaiting
                     # human review.  The external UI will pick these up.
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._repository.update_draft(draft)
-                    except Exception:
-                        pass
 
     # ── Internal helpers ─────────────────────────────────────────────────
 
@@ -845,7 +841,7 @@ class LeadGenOrchestrator:
         if self._shutdown_event.is_set():
             logger.info("orchestrator.shutdown_detected_halting_phase")
             report.phases_failed.append("shutdown")
-            report.completed_at = datetime.now(timezone.utc)
+            # completed_at is set by the finally block in run_full_pipeline.
             return True
         return False
 
@@ -878,6 +874,7 @@ class LeadGenOrchestrator:
         -------
         dict
             JSON-serialisable summary.
+
         """
         return {
             "success": report.success,

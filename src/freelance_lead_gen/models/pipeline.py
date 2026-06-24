@@ -9,8 +9,8 @@ a processing run is captured in :class:`PipelineContext`.
 from __future__ import annotations as _annotations
 
 import uuid
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from freelance_lead_gen.models.opportunity import LeadOpportunity
 
 
-class PipelineState(str, Enum):
+class PipelineState(StrEnum):
     """States of the opportunity processing pipeline.
 
     These mirror the :class:`~freelance_lead_gen.models.opportunity.LeadStatus`
@@ -180,6 +180,7 @@ def is_valid_transition(current: PipelineState, next_state: PipelineState) -> bo
     -------
     bool
         *True* if the transition is defined in the state machine.
+
     """
     return (current, next_state) in _VALID_TRANSITIONS
 
@@ -196,7 +197,7 @@ class StatusChange(BaseModel):
     to_state: PipelineState
     """The new state after the transition."""
 
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """When the transition occurred."""
 
     reason: str | None = Field(default=None)
@@ -261,6 +262,7 @@ class PipelineContext(BaseModel):
         ValueError
             If the transition is not valid according to
             :func:`is_valid_transition`.
+
         """
         if not is_valid_transition(self.state, state):
             msg = f"Invalid transition: {self.state.value} -> {state.value}"
@@ -289,7 +291,7 @@ class PipelineContext(BaseModel):
         """Return the elapsed processing time in seconds, or ``None`` if not started."""
         if self.started_at is None:
             return None
-        end = self.completed_at or datetime.now(timezone.utc)
+        end = self.completed_at or datetime.now(UTC)
         return (end - self.started_at).total_seconds()
 
     @property
@@ -323,7 +325,7 @@ class PipelineResult(BaseModel):
     stats: dict[str, int] = Field(default_factory=dict)
     """Aggregated statistics (e.g. ``{"discovered": 12, "qualified": 8}``)."""
 
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """When the pipeline run started."""
 
     completed_at: datetime | None = Field(default=None)

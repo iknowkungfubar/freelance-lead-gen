@@ -12,9 +12,10 @@ approval (DRAFTED status).  Features:
 
 from __future__ import annotations as _annotations
 
+from typing import TYPE_CHECKING
+
 from rich.style import Style
 from rich.text import Text
-from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
 from textual.reactive import reactive
@@ -37,6 +38,9 @@ from freelance_lead_gen.ui.widgets import (
     format_budget,
     format_timestamp,
 )
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
 
 # ── Messages ─────────────────────────────────────────────────────────────
 

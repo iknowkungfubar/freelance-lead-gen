@@ -12,11 +12,11 @@ from freelance_lead_gen.config.prompts import (
 from freelance_lead_gen.config.settings import Settings, get_settings
 
 __all__ = [
-    "Settings",
-    "get_settings",
     "ANTI_AI_PROMPT",
-    "QUALIFICATION_PROMPT",
     "CLASSIFICATION_PROMPT",
     "OUTREACH_DRAFT_PROMPT",
+    "QUALIFICATION_PROMPT",
+    "Settings",
     "get_platform_prompt_modifier",
+    "get_settings",
 ]

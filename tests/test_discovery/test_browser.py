@@ -11,14 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from freelance_lead_gen.discovery.browser import (
-    BrowserError,
     BrowserNotStartedError,
     BrowserSessionInfo,
     ManagedBrowser,
-    NavigationTimeoutError,
     create_browser,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
 
@@ -279,7 +276,7 @@ class TestCreateBrowserFactory:
     @pytest.mark.asyncio
     async def test_factory_aborts_on_exception(self) -> None:
         """Verify create_browser stops the browser if the context raises."""
-        browser = ManagedBrowser()
+        ManagedBrowser()
         with patch.object(ManagedBrowser, "start", new=AsyncMock(return_value=None)):
             with patch.object(ManagedBrowser, "stop", new=AsyncMock()):
                 async with create_browser(headless=True) as b:

@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-from pathlib import Path
-from typing import Any, AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -21,6 +18,9 @@ from freelance_lead_gen.storage.database import close_db, init_db
 from freelance_lead_gen.storage.migrations import apply_migrations
 from freelance_lead_gen.storage.repository import OpportunityRepository
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+    from pathlib import Path
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +237,30 @@ def tmp_working_dir(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
 
 
 # ── Async event loop ──────────────────────────────────────────────────────────
+
+
+# ── Helper factories ─────────────────────────────────────────────────────────
+
+
+def _make_opportunity(
+    platform_job_id: str,
+    title: str = "Test Lead",
+    status: LeadStatus = LeadStatus.DISCOVERED,
+    score: int | None = None,
+) -> LeadOpportunity:
+    """Create a :class:`LeadOpportunity` with sensible defaults.
+
+    This is a plain (non-fixture) helper so it can be called freely in
+    test bodies without pytest fixture injection.
+    """
+    return LeadOpportunity(
+        platform="upwork",
+        platform_job_id=platform_job_id,
+        title=title,
+        description="A test freelance opportunity for integration testing.",
+        status=status,
+        score=score,
+    )
 
 
 @pytest.fixture(scope="session")

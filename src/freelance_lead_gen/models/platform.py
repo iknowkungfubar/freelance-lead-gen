@@ -8,7 +8,7 @@ holds authentication secrets (never logged or serialised).
 
 from __future__ import annotations as _annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_serializer, model_validator
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_serializer, model_validator
 # ── Platform Enum ────────────────────────────────────────────────────────────
 
 
-class Platform(str, Enum):
+class Platform(StrEnum):
     """Supported freelance / job platforms."""
 
     UPWORK = "upwork"
@@ -160,7 +160,7 @@ class PlatformCredentials(BaseModel):
     # ── serialisation ───────────────────────────────────────────────────
 
     @field_serializer("password", "api_key", "token", "cookies")
-    def _redact_secrets(self, value: object, _info: Any) -> str | None:  # noqa: ANN401
+    def _redact_secrets(self, value: object, _info: Any) -> str | None:
         """Always redact secret fields when serialising."""
         if value is None:
             return None

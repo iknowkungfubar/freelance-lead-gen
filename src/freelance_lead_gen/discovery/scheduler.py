@@ -10,16 +10,17 @@ from __future__ import annotations as _annotations
 import asyncio
 import random
 import signal
-import sys
-from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = structlog.get_logger(__name__)
 
@@ -114,6 +115,7 @@ class DiscoveryScheduler:
         Maximum opportunities to process per day (default 50).
     window_hours : int
         Hours over which to spread discovery (default 12).
+
     """
 
     def __init__(
@@ -163,6 +165,7 @@ class DiscoveryScheduler:
         -------
         dict
             Includes: running, platforms, stats, daily_cap, etc.
+
         """
         return {
             "running": self._running,
@@ -198,8 +201,8 @@ class DiscoveryScheduler:
             return
 
         self._running = True
-        self._stats.started_at = datetime.now(timezone.utc)
-        self._daily_reset_time = datetime.now(timezone.utc)
+        self._stats.started_at = datetime.now(UTC)
+        self._daily_reset_time = datetime.now(UTC)
 
         # Register a platform if none exist.
         if not self._platforms:
@@ -235,6 +238,7 @@ class DiscoveryScheduler:
         ----------
         grace_period_seconds : int
             Max seconds to wait for in-flight discovery cycles to complete.
+
         """
         if not self._running:
             return
@@ -272,6 +276,7 @@ class DiscoveryScheduler:
             Minutes between discovery rounds for this platform.
         max_per_round : int
             Maximum leads to collect per round.
+
         """
         schedule = PlatformSchedule(
             platform_name=platform_name,
@@ -302,6 +307,7 @@ class DiscoveryScheduler:
         -------
         bool
             *True* if the platform was found and removed.
+
         """
         if platform_name not in self._platforms:
             logger.warning("scheduler.platform_not_found", platform=platform_name)
@@ -324,6 +330,7 @@ class DiscoveryScheduler:
         ----------
         platform_name : str
             Lowercase platform name.
+
         """
         schedule = self._platforms.get(platform_name)
         if schedule:
@@ -340,6 +347,7 @@ class DiscoveryScheduler:
         ----------
         platform_name : str
             Lowercase platform name.
+
         """
         schedule = self._platforms.get(platform_name)
         if schedule:
@@ -407,7 +415,7 @@ class DiscoveryScheduler:
                 self._stats.total_leads += leads_found
                 self._stats.total_new += leads_new
 
-                schedule.last_run = datetime.now(timezone.utc)
+                schedule.last_run = datetime.now(UTC)
                 schedule.total_found += leads_found
                 schedule.consecutive_failures = 0
 
@@ -439,7 +447,7 @@ class DiscoveryScheduler:
                 schedule.consecutive_failures += 1
                 self._stats.total_failures += 1
 
-                logger.error(
+                logger.exception(
                     "scheduler.cycle_failed",
                     platform=platform_name,
                     error=str(exc),
@@ -478,7 +486,7 @@ class DiscoveryScheduler:
             name=platform_name,
             replace_existing=True,
             next_run_time=(
-                datetime.now(timezone.utc) + timedelta(seconds=start_delay)
+                datetime.now(UTC) + timedelta(seconds=start_delay)
             ),
         )
 
@@ -498,7 +506,7 @@ class DiscoveryScheduler:
 
         Resets the counter if a new UTC day has started.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Reset counters if we've crossed a UTC day boundary.
         if self._daily_reset_time is not None:
@@ -573,6 +581,7 @@ class DiscoveryScheduler:
         Returns
         -------
         DiscoveryScheduler
+
         """
         sched = cls(discovery_fn=discovery_fn, daily_cap=daily_cap)
 

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -18,11 +17,9 @@ from freelance_lead_gen.models.pipeline import (
     PipelineContext,
     PipelineResult,
     PipelineState,
-    StatusChange,
     is_valid_transition,
 )
 from freelance_lead_gen.models.platform import Platform, PlatformConfig, PlatformCredentials
-
 
 # ── LeadOpportunity ─────────────────────────────────────────────────────────────
 
@@ -51,7 +48,7 @@ class TestLeadOpportunity:
 
     def test_create_full(self) -> None:
         """Verify a fully-populated LeadOpportunity has all fields set."""
-        now = datetime.now(timezone.utc)
+        datetime.now(UTC)
         opp = LeadOpportunity(
             platform="linkedin",
             platform_job_id="linked-999",
@@ -309,7 +306,7 @@ class TestPipelineContext:
 
     def test_initial_state(self) -> None:
         """Verify a new context starts in PENDING state."""
-        from tests.test_integration import _make_opportunity
+        from tests.conftest import _make_opportunity
 
         opp = _make_opportunity("ctx-1")
         ctx = PipelineContext(opportunity=opp)
@@ -320,7 +317,7 @@ class TestPipelineContext:
 
     def test_transition_to(self) -> None:
         """Verify transition_to updates state and records history."""
-        from tests.test_integration import _make_opportunity
+        from tests.conftest import _make_opportunity
 
         opp = _make_opportunity("ctx-2")
         ctx = PipelineContext(opportunity=opp)
@@ -334,7 +331,7 @@ class TestPipelineContext:
 
     def test_invalid_transition_raises(self) -> None:
         """Verify an invalid transition raises ValueError."""
-        from tests.test_integration import _make_opportunity
+        from tests.conftest import _make_opportunity
 
         opp = _make_opportunity("ctx-3")
         ctx = PipelineContext(opportunity=opp)
@@ -343,7 +340,7 @@ class TestPipelineContext:
 
     def test_terminal_state_records_completed_at(self) -> None:
         """Verify reaching a terminal state sets completed_at."""
-        from tests.test_integration import _make_opportunity
+        from tests.conftest import _make_opportunity
 
         opp = _make_opportunity("ctx-4")
         ctx = PipelineContext(opportunity=opp)
@@ -354,7 +351,7 @@ class TestPipelineContext:
 
     def test_elapsed_seconds(self) -> None:
         """Verify elapsed_seconds is calculated correctly."""
-        from tests.test_integration import _make_opportunity
+        from tests.conftest import _make_opportunity
 
         opp = _make_opportunity("ctx-5")
         ctx = PipelineContext(opportunity=opp)
@@ -376,7 +373,7 @@ class TestPipelineResult:
 
     def test_compute_stats_with_contexts(self) -> None:
         """Verify compute_stats aggregates state counts correctly."""
-        from tests.test_integration import _make_opportunity
+        from tests.conftest import _make_opportunity
 
         ctx1 = PipelineContext(opportunity=_make_opportunity("pr-1"))
         ctx1.transition_to(PipelineState.INITIALISED)

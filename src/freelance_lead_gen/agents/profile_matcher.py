@@ -9,18 +9,17 @@ from __future__ import annotations as _annotations
 
 import json
 import os
-import re
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-from freelance_lead_gen.config.settings import get_settings
-from freelance_lead_gen.models.opportunity import LeadOpportunity
+if TYPE_CHECKING:
+    from freelance_lead_gen.models.opportunity import LeadOpportunity
 
 logger = structlog.get_logger(__name__)
 
@@ -150,6 +149,7 @@ class TargetProfile(BaseModel):
         -------
         Path
             The resolved path the profile was written to.
+
         """
         resolved = Path(path).resolve()
         resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -176,6 +176,7 @@ class TargetProfile(BaseModel):
         -------
         Path
             The resolved path the profile was written to.
+
         """
         resolved = Path(path).resolve()
         resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -196,6 +197,7 @@ class TargetProfile(BaseModel):
         Returns
         -------
         TargetProfile
+
         """
         resolved = Path(path).resolve()
         with resolved.open("r", encoding="utf-8") as fh:
@@ -216,6 +218,7 @@ class TargetProfile(BaseModel):
         Returns
         -------
         TargetProfile
+
         """
         resolved = Path(path).resolve()
         with resolved.open("r", encoding="utf-8") as fh:
@@ -291,6 +294,7 @@ class ProfileMatcher:
         :meth:`TargetProfile.default`.
     weights : MatchingWeights or None
         Scoring weights.  Defaults to all-default weights.
+
     """
 
     def __init__(
@@ -353,6 +357,7 @@ class ProfileMatcher:
             - ``disqualified`` (bool): *True* if excluded keywords found.
             - ``disqualification_reason`` (str or None): why disqualified.
             - ``diagnostics`` (dict): per-dimension raw values.
+
         """
         diagnostics: dict[str, Any] = {}
         disqualified = False
@@ -459,6 +464,7 @@ class ProfileMatcher:
         -------
         list of dict
             One scoring result per opportunity, in the same order.
+
         """
         return [self.score_opportunity(opp) for opp in opportunities]
 
@@ -476,9 +482,7 @@ class ProfileMatcher:
 
         matched = 0
         for profile_skill in self._profile_skills_lower:
-            if profile_skill in opp_skills:
-                matched += 1
-            elif any(
+            if profile_skill in opp_skills or any(
                 _fuzzy_match(profile_skill, opp_skill) for opp_skill in opp_skills
             ):
                 matched += 1
@@ -601,7 +605,7 @@ class ProfileMatcher:
         """Return the number of days since the opportunity was posted."""
         if opportunity.posted_date is None:
             return None
-        delta = datetime.now(timezone.utc) - opportunity.posted_date
+        delta = datetime.now(UTC) - opportunity.posted_date
         return max(0, delta.days)
 
     def _detect_industries(self, text: str) -> set[str]:
@@ -634,6 +638,7 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.8) -> bool:
     Returns
     -------
     bool
+
     """
     # Direct substring containment is an easy win.
     if a in b or b in a:
@@ -644,7 +649,7 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.8) -> bool:
         return True
 
     # Handle common abbreviations/synonyms.
-    _SYNONYMS: dict[str, set[str]] = {
+    synonyms: dict[str, set[str]] = {
         "ml": {"machine learning", "machine-learning"},
         "ai": {"artificial intelligence"},
         "nlp": {"natural language processing"},
@@ -659,7 +664,7 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.8) -> bool:
         "orm": {"object relational mapping"},
     }
 
-    for short, full_set in _SYNONYMS.items():
+    for short, full_set in synonyms.items():  # noqa: N806
         if (a == short and b in full_set) or (b == short and a in full_set):
             return True
 
@@ -680,6 +685,7 @@ def _extract_skill_mentions(text: str, profile_skills: set[str]) -> set[str]:
     -------
     set of str
         The subset of profile skills found in the text.
+
     """
     text_lower = text.lower()
     found: set[str] = set()

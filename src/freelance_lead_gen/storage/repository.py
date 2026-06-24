@@ -13,16 +13,19 @@ from __future__ import annotations as _annotations
 
 import contextlib
 import json
-from collections.abc import AsyncGenerator, Sequence
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy import RowMapping, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus, OutboundDraft
-from freelance_lead_gen.storage.database import get_session, get_session_factory
+from freelance_lead_gen.storage.database import get_session_factory
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 
@@ -159,13 +162,13 @@ def _parse_json_dict(raw: str | None) -> dict[str, Any]:
 
 def _parse_datetime(raw: str | None) -> datetime:
     if raw is None:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     try:
         if raw.endswith("Z"):
             raw = raw[:-1] + "+00:00"
         return datetime.fromisoformat(raw)
     except (ValueError, TypeError):
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
 
 def _parse_optional_datetime(raw: str | None) -> datetime | None:
@@ -250,6 +253,7 @@ class OpportunityRepository:
         ------
         DatabaseError
             If the insert fails (e.g. duplicate platform_job_id).
+
         """
         row = _opportunity_to_row(opportunity)
         columns = ", ".join(row)
@@ -268,7 +272,7 @@ class OpportunityRepository:
                     title=opportunity.title[:60],
                 )
             except Exception as exc:
-                logger.error("opportunity.create_failed", id=opportunity.id, error=str(exc))
+                logger.exception("opportunity.create_failed", id=opportunity.id, error=str(exc))
                 raise DatabaseError(f"Failed to create opportunity: {exc}", original=exc) from exc
 
         return opportunity
@@ -291,6 +295,7 @@ class OpportunityRepository:
         ------
         OpportunityNotFound
             If no opportunity matches the given ID.
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -320,6 +325,7 @@ class OpportunityRepository:
         -------
         LeadOpportunity or None
             The matching opportunity, or *None* if not found.
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -372,6 +378,7 @@ class OpportunityRepository:
         Returns
         -------
         list of LeadOpportunity
+
         """
         limit = min(limit, 500)
         conditions: list[str] = []
@@ -497,6 +504,7 @@ class OpportunityRepository:
         Returns
         -------
         tuple of (list of LeadOpportunity, total_count)
+
         """
         limit = min(limit, 500)
 
@@ -539,6 +547,7 @@ class OpportunityRepository:
         ------
         OpportunityNotFound
             If the opportunity does not exist.
+
         """
         if update_timestamp:
             opportunity.touch()
@@ -591,8 +600,9 @@ class OpportunityRepository:
         ------
         OpportunityNotFound
             If the ID does not exist.
+
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         set_items = ["status = :status", "updated_at = :now"]
         params: dict[str, Any] = {"id": opportunity_id, "status": status.value, "now": now}
 
@@ -646,6 +656,7 @@ class OpportunityRepository:
         LeadOpportunity
             The persisted opportunity as it exists in the database after
             the upsert.
+
         """
         row = _opportunity_to_row(opportunity)
         columns = ", ".join(row)
@@ -692,7 +703,7 @@ class OpportunityRepository:
                 )
                 return _row_to_opportunity(persisted)
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "opportunity.upsert_failed",
                     platform=opportunity.platform,
                     platform_job_id=opportunity.platform_job_id,
@@ -714,6 +725,7 @@ class OpportunityRepository:
         -------
         bool
             *True* if a row was deleted, *False* if it did not exist.
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -747,6 +759,7 @@ class OpportunityRepository:
         Returns
         -------
         dict of str -> int
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -770,6 +783,7 @@ class OpportunityRepository:
         Returns
         -------
         dict of str -> int
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -798,6 +812,7 @@ class OpportunityRepository:
         ------
         DatabaseError
             If the insert fails.
+
         """
         row = _draft_to_row(draft)
         columns = ", ".join(row)
@@ -831,6 +846,7 @@ class OpportunityRepository:
         ------
         DraftNotFound
             If the ID does not exist.
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -857,6 +873,7 @@ class OpportunityRepository:
         Returns
         -------
         list of OutboundDraft
+
         """
         async with self._session_scope() as session:
             result = await session.execute(
@@ -883,8 +900,9 @@ class OpportunityRepository:
         ------
         DraftNotFound
             If the draft ID does not exist.
+
         """
-        draft.updated_at = datetime.now(timezone.utc)
+        draft.updated_at = datetime.now(UTC)
         row = _draft_to_row(draft)
         set_clause = ", ".join(f"{k} = :{k}" for k in row if k != "id")
 

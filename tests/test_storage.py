@@ -2,29 +2,23 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
 
 from freelance_lead_gen.config.settings import get_settings
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus, OutboundDraft
 from freelance_lead_gen.storage.database import close_db, get_engine, get_session, init_db
 from freelance_lead_gen.storage.migrations import MIGRATIONS, apply_migrations, get_migration_status
 from freelance_lead_gen.storage.repository import (
-    DatabaseError,
     DraftNotFound,
     OpportunityNotFound,
     OpportunityRepository,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ── Helper factories ────────────────────────────────────────────────────────────
 
@@ -88,7 +82,7 @@ class TestMigrations:
     """Tests for the inline migration system."""
 
     @pytest.mark.asyncio
-    async def test_apply_migrations(self, in_memory_db) -> None:  # noqa: ANN001
+    async def test_apply_migrations(self, in_memory_db) -> None:
         """Verify migrations are applied and the registry table is created."""
         status = await get_migration_status()
         assert len(status) == len(MIGRATIONS)
@@ -97,7 +91,7 @@ class TestMigrations:
             assert entry["applied_at"] is not None
 
     @pytest.mark.asyncio
-    async def test_migrations_idempotent(self, in_memory_db) -> None:  # noqa: ANN001
+    async def test_migrations_idempotent(self, in_memory_db) -> None:
         """Verify running migrations twice does not fail.
 
         The in_memory_db fixture applies migrations during setup, so
@@ -112,7 +106,7 @@ class TestMigrations:
         assert len(applied_second) == 0  # Nothing new to apply
 
     @pytest.mark.asyncio
-    async def test_migration_tables_exist(self, in_memory_db) -> None:  # noqa: ANN001
+    async def test_migration_tables_exist(self, in_memory_db) -> None:
         """Verify the expected tables exist after migrations."""
         engine = get_engine()
         async with engine.connect() as conn:

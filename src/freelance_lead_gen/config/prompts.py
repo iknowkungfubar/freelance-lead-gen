@@ -228,5 +228,6 @@ def get_platform_prompt_modifier(platform: str) -> str:
     str
         The modifier text to inject into the outreach draft prompt.
         Falls back to a generic modifier for unknown platforms.
+
     """
     return _PLATFORM_MODIFIERS.get(platform.lower(), _DEFAULT_MODIFIER)

@@ -10,13 +10,11 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import json
-import math
 import re
 import time
-from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 import structlog
@@ -28,10 +26,14 @@ from openai import (
     RateLimitError,
     Timeout,
 )
-from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from pydantic import BaseModel
 
 from freelance_lead_gen.config.settings import Settings, get_settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 
 logger = structlog.get_logger(__name__)
 
@@ -95,6 +97,7 @@ def _count_message_tokens(
     -------
     int
         Estimated or exact token count.
+
     """
     try:
         import tiktoken
@@ -198,6 +201,7 @@ def _extract_json_from_text(text: str) -> str:
     str
         The extracted JSON string, or the original text if no JSON-like
         structure was found.
+
     """
     # Try fenced code blocks first.
     match = re.search(
@@ -248,6 +252,7 @@ class LLMClient:
     ----------
     settings : Settings or None
         Application settings.  When ``None``, loaded from the environment.
+
     """
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -264,10 +269,12 @@ class LLMClient:
             ),
         )
 
-        # Some providers (OpenCode, local) accept any non-empty API key.
         resolved_key: str = llm_cfg.api_key
-        if not resolved_key:
-            resolved_key = "sk-placeholder"  # Satisfies the SDK requirement.
+        if not resolved_key or resolved_key == "***":
+            logger.critical("LLM_API_KEY is not set")
+            raise ValueError(
+                "LLM_API_KEY is not set. Set it in .env or environment variables."
+            )
 
         self._client: AsyncOpenAI = AsyncOpenAI(
             api_key=resolved_key,
@@ -309,7 +316,7 @@ class LLMClient:
 
     # ── Public API ───────────────────────────────────────────────────────
 
-    async def chat_completion(  # noqa: PLR0913
+    async def chat_completion(
         self,
         messages: list[ChatCompletionMessageParam],
         *,
@@ -359,6 +366,7 @@ class LLMClient:
             If the request times out.
         LLMError
             For other unrecoverable errors.
+
         """
         if stream and response_format is not None:
             msg = "stream=True is not compatible with structured output (response_format)"
@@ -368,7 +376,7 @@ class LLMClient:
         temp = temperature if temperature is not None else self._default_temperature
 
         if self._stats["started_at"] is None:
-            self._stats["started_at"] = datetime.now(timezone.utc).isoformat()
+            self._stats["started_at"] = datetime.now(UTC).isoformat()
 
         # Estimate input tokens for logging.
         input_tokens = _count_message_tokens(messages, model=model_id)
@@ -607,6 +615,7 @@ class LLMClient:
         ------
         LLMError
             If the content cannot be parsed as valid JSON.
+
         """
         # Try direct parse first.
         for attempt_fn in (
@@ -664,6 +673,7 @@ class LLMClient:
         -------
         str
             The model's response text.
+
         """
         return await self.chat_completion(
             [
@@ -703,6 +713,7 @@ class LLMClient:
         -------
         dict
             Parsed structured data matching the response model.
+
         """
         result = await self.chat_completion(
             [
@@ -714,7 +725,10 @@ class LLMClient:
             response_format=response_model,
             label="structured_classify",
         )
-        assert isinstance(result, dict), "Expected dict from structured_classify"
+        if not isinstance(result, dict):
+            raise ValueError(
+                f"Expected dict from structured_classify, got {type(result).__name__}"
+            )
         return result
 
     # ── Lifecycle ────────────────────────────────────────────────────────
@@ -749,6 +763,7 @@ def _parse_retry_after(error_text: str) -> float:
     -------
     float
         Seconds to wait, defaulting to 5.0 if parsing fails.
+
     """
     # Look for common patterns: "retry after X seconds", "RetryAfter: X", etc.
     patterns = [

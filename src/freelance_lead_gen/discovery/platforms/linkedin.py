@@ -17,13 +17,17 @@ interaction.  This extractor implements:
 
 from __future__ import annotations as _annotations
 
+import contextlib
 import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -97,6 +101,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         Optional email for credential-based login.
     password : str or None
         Optional password for credential-based login.
+
     """
 
     def __init__(
@@ -106,6 +111,8 @@ class LinkedInExtractor(BasePlatformExtractor):
         rate_limit: RateLimitConfig | None = None,
         email: str | None = None,
         password: str | None = None,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__(
             browser,
@@ -117,9 +124,11 @@ class LinkedInExtractor(BasePlatformExtractor):
                 max_pages_per_session=5,
                 cooldown_after_session=120.0,
             ),
+            credentials=credentials,
+            settings=settings,
         )
-        self._email = email
-        self._password = password
+        self._email = email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        self._password = password or (credentials or {}).get("password")
 
     # ── BasePlatformExtractor interface ─────────────────────────────────
 
@@ -141,6 +150,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if authenticated.
+
         """
         # Check if session cookies already work.
         if await self._is_authenticated():
@@ -201,7 +211,7 @@ class LinkedInExtractor(BasePlatformExtractor):
             return True
 
         except Exception as exc:
-            logger.error("linkedin.login_exception", error=str(exc))
+            logger.exception("linkedin.login_exception", error=str(exc))
             return False
 
     async def search(self, query: str) -> None:
@@ -211,6 +221,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         ----------
         query : str
             Search keywords.
+
         """
         url = self.search_url_template.format(query=query.replace(" ", "%20"))
         logger.info("linkedin.searching", query=query)
@@ -229,7 +240,7 @@ class LinkedInExtractor(BasePlatformExtractor):
             )
 
         except Exception as exc:
-            logger.error("linkedin.search_navigation_error", query=query, error=str(exc))
+            logger.exception("linkedin.search_navigation_error", query=query, error=str(exc))
             raise
 
     async def parse_results(self) -> list[RawLead]:
@@ -238,6 +249,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         Returns
         -------
         list of RawLead
+
         """
         leads: list[RawLead] = []
 
@@ -265,6 +277,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if the next page was loaded.
+
         """
         try:
             next_btn = await self._browser.page.query_selector(_LINKEDIN_NEXT_BUTTON)
@@ -289,7 +302,7 @@ class LinkedInExtractor(BasePlatformExtractor):
 
     # ── Card parsing ────────────────────────────────────────────────────
 
-    async def _parse_card(self, card: Any) -> RawLead | None:  # noqa: ANN401
+    async def _parse_card(self, card: Any) -> RawLead | None:
         """Parse a single LinkedIn job card into a :class:`RawLead`."""
         title = await self._get_el_text(card, _LINKEDIN_TITLE_SELECTOR)
         if not title:
@@ -301,7 +314,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         description = await self._get_el_text(card, _LINKEDIN_DESCRIPTION_SELECTOR)
         posted_text = await self._get_el_text(card, _LINKEDIN_POSTED_DATE_SELECTOR)
 
-        easy_apply = await self._detect_easy_apply(card)
+        await self._detect_easy_apply(card)
 
         # Extract a LinkedIn job ID from the URL or data attribute.
         job_id = self._extract_linkedin_job_id(url or title, card)
@@ -323,7 +336,7 @@ class LinkedInExtractor(BasePlatformExtractor):
             location=location.strip() if location else None,
         )
 
-    async def _detect_easy_apply(self, card: Any) -> bool:  # noqa: ANN401
+    async def _detect_easy_apply(self, card: Any) -> bool:
         """Check if a job card has an "Easy Apply" label."""
         try:
             el = await card.query_selector(_LINKEDIN_EASY_APPLY_SELECTOR)
@@ -337,10 +350,8 @@ class LinkedInExtractor(BasePlatformExtractor):
         """Extra-slow scroll pattern for LinkedIn's behavioural monitoring."""
         scrolls = random.randint(2, 4)
         for _ in range(scrolls):
-            try:
+            with contextlib.suppress(Exception):
                 await self._browser.scroll("down", amount=random.randint(200, 500))
-            except Exception:
-                pass
             await self._random_delay(1.0, 3.0)
 
     # ── Detection helpers ───────────────────────────────────────────────
@@ -395,7 +406,7 @@ class LinkedInExtractor(BasePlatformExtractor):
     # ── Element helpers ─────────────────────────────────────────────────
 
     @staticmethod
-    async def _get_el_text(card: Any, selector: str) -> str:  # noqa: ANN401
+    async def _get_el_text(card: Any, selector: str) -> str:
         """Get inner text from a child of *card*."""
         try:
             el = await card.query_selector(selector)
@@ -404,7 +415,7 @@ class LinkedInExtractor(BasePlatformExtractor):
             return ""
 
     @staticmethod
-    async def _get_el_href(card: Any, selector: str) -> str | None:  # noqa: ANN401
+    async def _get_el_href(card: Any, selector: str) -> str | None:
         """Get ``href`` from a child anchor, making relative URLs absolute."""
         try:
             el = await card.query_selector(selector)
@@ -418,7 +429,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         return None
 
     @staticmethod
-    def _extract_linkedin_job_id(url: str, card: Any) -> str:  # noqa: ANN401
+    def _extract_linkedin_job_id(url: str, card: Any) -> str:
         """Extract the LinkedIn job ID from a URL or card data attribute."""
         import re
 

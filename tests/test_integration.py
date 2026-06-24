@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import (
 from freelance_lead_gen.agents.filtering_agent import FilteringPipeline, FilteringReport
 from freelance_lead_gen.agents.orchestrator import (
     LeadGenOrchestrator,
-    OrchestratorReport,
 )
 from freelance_lead_gen.agents.personalization_agent import PersonalizationAgent
 from freelance_lead_gen.agents.verification_agent import (
@@ -30,7 +29,7 @@ from freelance_lead_gen.models.opportunity import (
     OutboundDraft,
 )
 from freelance_lead_gen.storage.repository import OpportunityRepository
-
+from tests.conftest import _make_opportunity
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -92,26 +91,6 @@ async def in_memory_db() -> AsyncSession:
         yield session
 
     await engine.dispose()
-
-
-# ── Helper factories ──────────────────────────────────────────────────────────
-
-
-def _make_opportunity(
-    platform_job_id: str,
-    title: str = "Test Lead",
-    status: LeadStatus = LeadStatus.DISCOVERED,
-    score: int | None = None,
-) -> LeadOpportunity:
-    """Create a :class:`LeadOpportunity` with sensible defaults."""
-    return LeadOpportunity(
-        platform="upwork",
-        platform_job_id=platform_job_id,
-        title=title,
-        description="A test freelance opportunity for integration testing.",
-        status=status,
-        score=score,
-    )
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────

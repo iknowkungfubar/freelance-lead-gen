@@ -8,14 +8,12 @@ timer.
 from __future__ import annotations as _annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.timer import Timer
 from textual.widgets import Button, Header, Label, Static
 from textual_plotext import PlotextPlot
 
@@ -30,6 +28,10 @@ from freelance_lead_gen.ui.widgets import (
     ActivityFeed,
     StatsCard,
 )
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
+    from textual.timer import Timer
 
 # ── Refresh interval ─────────────────────────────────────────────────────
 

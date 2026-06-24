@@ -37,15 +37,15 @@ enum values) to their corresponding extractor classes."""
 
 __all__ = [
     "PLATFORM_EXTRACTORS",
-    "BasePlatformExtractor",
-    "UpworkExtractor",
-    "LinkedInExtractor",
-    "FreelancerExtractor",
-    "RemoteOKExtractor",
-    "YCWorkExtractor",
     "AggregatorExtractor",
+    "BasePlatformExtractor",
+    "FreelancerExtractor",
+    "LinkedInExtractor",
+    "RemoteOKExtractor",
+    "UpworkExtractor",
+    "YCWorkExtractor",
 ]
 
 
 # Re-export the base class so consumers can reference it.
-from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor  # noqa: E402, F811
+from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor  # noqa: E402

@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 
 from freelance_lead_gen.agents.filtering_agent import FilteringPipeline, FilteringReport
 from freelance_lead_gen.agents.orchestrator import (
     LeadGenOrchestrator,
     OrchestratorReport,
-    PipelinePhase,
 )
 from freelance_lead_gen.agents.personalization_agent import PersonalizationAgent
-from freelance_lead_gen.agents.profile_matcher import TargetProfile
 from freelance_lead_gen.agents.verification_agent import (
     VerificationAgent,
     VerificationResult,
@@ -22,7 +19,6 @@ from freelance_lead_gen.agents.verification_agent import (
 from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent, DiscoveryCycleReport
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus, OutboundDraft
 from freelance_lead_gen.storage.repository import OpportunityRepository
-
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
 
@@ -101,7 +97,7 @@ class TestOrchestratorInit:
         assert orchestrator.shutdown_requested is False
         assert orchestrator.stats["runs"] == 0
 
-    def test_create_with_test_settings(self, test_settings) -> None:  # noqa: ANN001
+    def test_create_with_test_settings(self, test_settings) -> None:
         """Verify the orchestrator accepts a custom settings object."""
         orchestrator = LeadGenOrchestrator(settings=test_settings)
         assert orchestrator._settings is test_settings

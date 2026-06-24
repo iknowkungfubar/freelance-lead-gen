@@ -214,7 +214,7 @@ class StatsCard(Widget):
     value: str | int = reactive("—")
     delta: str | None = reactive(None)
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         label: str = "",
         value: str | int = "—",

@@ -10,15 +10,19 @@ from __future__ import annotations as _annotations
 
 import abc
 import asyncio
+import contextlib
 import random
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from freelance_lead_gen.discovery.browser import ManagedBrowser
-from freelance_lead_gen.discovery.extractor import RawLead
+from freelance_lead_gen.config.settings import Settings, get_settings
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.discovery.browser import ManagedBrowser
+    from freelance_lead_gen.discovery.extractor import RawLead
 
 logger = structlog.get_logger(__name__)
 
@@ -77,9 +81,13 @@ class BasePlatformExtractor(abc.ABC):
         browser: ManagedBrowser,
         *,
         rate_limit: RateLimitConfig | None = None,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self._browser = browser
         self._rate_limit = rate_limit or RateLimitConfig()
+        self._credentials = credentials or {}
+        self._settings = settings or get_settings()
 
         # Internal state.
         self._authenticated: bool = False
@@ -108,6 +116,7 @@ class BasePlatformExtractor(abc.ABC):
         -------
         bool
             *True* if the login was successful.
+
         """
         ...
 
@@ -123,6 +132,7 @@ class BasePlatformExtractor(abc.ABC):
         Returns
         -------
         list of RawLead
+
         """
         ...
 
@@ -134,6 +144,7 @@ class BasePlatformExtractor(abc.ABC):
         -------
         bool
             *True* if the next page was loaded, *False* if at the last page.
+
         """
         ...
 
@@ -151,6 +162,7 @@ class BasePlatformExtractor(abc.ABC):
         .. note::
             This is a convenience that calls the abstract methods in order.
             Subclasses with more complex flows should override this directly.
+
         """
         return [
             {
@@ -170,26 +182,37 @@ class BasePlatformExtractor(abc.ABC):
             for lead in (await self.extract_listings_raw())
         ]
 
-    async def extract_listings_raw(self) -> list[RawLead]:
+    async def extract_listings_raw(self, query: str = "") -> list[RawLead]:
         """Run a full extraction, returning :class:`RawLead` objects.
 
-        Calls :meth:`ensure_authenticated`, calls :meth:`search`, collects
-        results from all pages up to the platform's page limit, and
-        returns deduplicated leads.
+        Calls :meth:`ensure_authenticated`, calls :meth:`search` with the
+        given *query*, collects results from all pages up to the platform's
+        page limit, and returns deduplicated leads.
+
+        Parameters
+        ----------
+        query : str
+            Search term to pass to :meth:`search`.  Defaults to ``""``
+            (browse all listings).
+
         """
-        logger.info("platform.extract_started", platform=self.platform_name)
+        logger.info(
+            "platform.extract_started",
+            platform=self.platform_name,
+            query=query or "all",
+        )
 
         if not await self.ensure_authenticated():
             logger.error("platform.auth_failed", platform=self.platform_name)
             return []
 
         await self._rate_limit_delay()
-        await self.search("")
+        await self.search(query)
 
         leads: list[RawLead] = []
         seen: set[str] = set()
         self._current_page = 0
-        self._session_start = datetime.now(timezone.utc).timestamp()
+        self._session_start = datetime.now(UTC).timestamp()
 
         while self._current_page < self._rate_limit.max_pages_per_session:
             self._current_page += 1
@@ -238,6 +261,7 @@ class BasePlatformExtractor(abc.ABC):
         -------
         bool
             *True* if authenticated (or auth not required).
+
         """
         if self._authenticated:
             return True
@@ -245,7 +269,7 @@ class BasePlatformExtractor(abc.ABC):
         try:
             self._authenticated = await self.login()
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "platform.login_exception",
                 platform=self.platform_name,
                 error=str(exc),
@@ -266,6 +290,7 @@ class BasePlatformExtractor(abc.ABC):
         -------
         bool
             *True* if the session is valid after the check.
+
         """
         if force or self._session_expired():
             logger.info("platform.session_refresh", platform=self.platform_name)
@@ -279,7 +304,7 @@ class BasePlatformExtractor(abc.ABC):
         """
         if self._session_start is None:
             return True
-        elapsed = datetime.now(timezone.utc).timestamp() - self._session_start
+        elapsed = datetime.now(UTC).timestamp() - self._session_start
         # Assume sessions are valid for ~30 minutes.
         return elapsed > 1800
 
@@ -298,10 +323,8 @@ class BasePlatformExtractor(abc.ABC):
         for _ in range(scrolls):
             amount = random.randint(200, 700)
             direction = random.choice(["down", "down", "down", "up"])
-            try:
+            with contextlib.suppress(Exception):
                 await self._browser.scroll(direction, amount=amount)
-            except Exception:
-                pass
             await asyncio.sleep(random.uniform(0.3, 1.5))
 
     async def _random_mouse_move(self) -> None:
@@ -353,12 +376,13 @@ class BasePlatformExtractor(abc.ABC):
         -------
         bool
             *True* if redirected to a login / auth page.
+
         """
         from freelance_lead_gen.discovery.extractor import _LOGIN_REDIRECT_INDICATORS
 
         try:
             current_url = self._browser.page.url.lower()
-            clean_original = original_url.split("?")[0].rstrip("/")
+            clean_original = original_url.split("?", maxsplit=1)[0].rstrip("/")
             clean_current = current_url.split("?")[0].rstrip("/")
 
             if clean_original == clean_current:
@@ -385,6 +409,7 @@ class BasePlatformExtractor(abc.ABC):
         -------
         bool
             *True* if a CAPTCHA is present.
+
         """
         from freelance_lead_gen.discovery.extractor import _CAPTCHA_INDICATORS
 

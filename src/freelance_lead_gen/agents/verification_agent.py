@@ -8,18 +8,17 @@ can be flagged for regeneration.
 
 from __future__ import annotations as _annotations
 
-import math
 import re
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from pydantic import BaseModel, Field
 
 from freelance_lead_gen.config.settings import Settings, get_settings
-from freelance_lead_gen.llm import LLMClient
-from freelance_lead_gen.models.opportunity import LeadOpportunity, OutboundDraft
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.llm import LLMClient
+    from freelance_lead_gen.models.opportunity import LeadOpportunity, OutboundDraft
 
 logger = structlog.get_logger(__name__)
 
@@ -128,6 +127,7 @@ class VerificationAgent:
         Minimum score for a draft to pass (default 65).
     settings : Settings or None
         Application settings.
+
     """
 
     def __init__(
@@ -189,6 +189,7 @@ class VerificationAgent:
         Returns
         -------
         VerificationResult
+
         """
         body = draft.current_body or ""
         subject = draft.subject or ""
@@ -288,6 +289,7 @@ class VerificationAgent:
         tuple of (OutboundDraft, VerificationResult)
             The final draft (possibly regenerated) and its verification
             result.
+
         """
         current_draft = draft
         result = await self.verify(current_draft, opportunity)
@@ -320,6 +322,7 @@ class VerificationAgent:
         Returns
         -------
         dict with keys: ``count``, ``phrases_found``, ``blocker``, ``descriptions``.
+
         """
         phrases_found: list[str] = []
         descriptions: list[str] = []
@@ -331,7 +334,7 @@ class VerificationAgent:
                 if len(matched) > 60:
                     matched = matched[:57] + "..."
                 phrases_found.append(matched)
-                descriptions.append(f"Banned phrase detected: \"{matched}\"")
+                descriptions.append(f'Banned phrase detected: "{matched}"')
 
         return {
             "count": len(phrases_found),
@@ -348,6 +351,7 @@ class VerificationAgent:
         Returns
         -------
         dict with keys: ``count``, ``markers_found``, ``descriptions``.
+
         """
         markers_found: list[str] = []
         descriptions: list[str] = []
@@ -357,7 +361,7 @@ class VerificationAgent:
             if match:
                 matched = match.group(0).strip()
                 markers_found.append(matched)
-                descriptions.append(f"AI marker detected: \"{matched}\"")
+                descriptions.append(f'AI marker detected: "{matched}"')
 
         return {
             "count": len(markers_found),
@@ -373,6 +377,7 @@ class VerificationAgent:
         Returns
         -------
         dict with keys: ``issues`` (list of str), ``structure_score`` (int).
+
         """
         issues: list[str] = []
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -402,6 +407,23 @@ class VerificationAgent:
             if variance < 5.0:
                 issues.append("Paragraph lengths are too uniform — vary them.")
 
+        # Check for excessive exclamation marks (unprofessional in outreach).
+        exclamation_count = text.count("!")
+        if exclamation_count > 1:
+            issues.append(f"Too many exclamation marks: {exclamation_count} (max 1)")
+
+        # Check for emoji in draft text.
+        emoji_pattern = re.compile(
+            "[\U0001F600-\U0001F9FF"
+            "\U0001F300-\U0001F5FF"
+            "\U0001F680-\U0001F6FF"
+            "\U0001F1E0-\U0001F1FF"
+            "☀-⛿"
+            "✀-➿]"
+        )
+        if emoji_pattern.search(text):
+            issues.append("Draft contains emoji — avoid in professional outreach.")
+
         # Score.
         score = 100
         score -= max(0, (len(paragraphs) - _MAX_PARAGRAPHS)) * 10
@@ -409,6 +431,8 @@ class VerificationAgent:
         score -= 10 if any("bullet" in i for i in issues) else 0
         score -= 10 if any("numbered" in i for i in issues) else 0
         score -= 15 if any("uniform" in i for i in issues) else 0
+        score -= 10 if any("exclamation" in i for i in issues) else 0
+        score -= 10 if any("emoji" in i for i in issues) else 0
         structure_score: int = max(0, score)
 
         return {
@@ -424,6 +448,7 @@ class VerificationAgent:
         Returns
         -------
         dict with keys: ``issues`` (list of str), ``penalty`` (int).
+
         """
         issues: list[str] = []
         penalty = 0
@@ -506,9 +531,8 @@ class VerificationAgent:
             if word.endswith("e") and count > 1:
                 count -= 1
             # Subtract trailing 'es' or 'ed' (common English patterns).
-            if word.endswith(("es", "ed")) and count > 1:
-                if len(word) > 4:
-                    count -= 1
+            if word.endswith(("es", "ed")) and count > 1 and len(word) > 4:
+                count -= 1
 
             total += max(1, count)
 
@@ -596,7 +620,7 @@ class VerificationAgent:
         # Length penalty.
         score -= length_penalty
 
-        return max(0, min(100, int(round(score))))
+        return max(0, min(100, round(score)))
 
     # ── LLM-assisted verification ────────────────────────────────────────
 
@@ -613,6 +637,7 @@ class VerificationAgent:
         Returns
         -------
         dict with keys: ``issues`` (list of str), ``score_adjustment`` (int).
+
         """
         body = draft.current_body or ""
         prompt = (
@@ -658,6 +683,7 @@ class VerificationAgent:
         -------
         list of str
             Suggested fixes.
+
         """
         suggestions: list[str] = []
         issue_text = " ".join(issues).lower()
@@ -690,6 +716,10 @@ class VerificationAgent:
             suggestions.append("Replace [placeholders] with actual content")
         if "generic" in issue_text:
             suggestions.append("Add a specific, personalized detail from the listing")
+        if "exclamation" in issue_text:
+            suggestions.append("Use fewer exclamation marks — maintain a professional tone")
+        if "emoji" in issue_text:
+            suggestions.append("Remove emoji from professional outreach messages")
 
         return suggestions
 

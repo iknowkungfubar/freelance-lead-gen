@@ -20,14 +20,31 @@
 ```bash
 git clone https://github.com/iknowkungfubar/freelance-lead-gen.git
 cd freelance-lead-gen
+```
 
+**uv (recommended):** The project uses `uv` as its primary package manager for fast, reproducible installs.
+
+```bash
 # Create virtual environment and install dependencies
 uv venv
 source .venv/bin/activate
 uv sync
 
-# Install dev dependencies
+# Install dev dependencies (tests, linting, type checking)
+# Note: uv sync alone only installs runtime dependencies.
 uv sync --group dev
+```
+
+**pip alternative:** If you don't have `uv` installed, you can use pip directly:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+# Install the package in editable mode with all runtime dependencies
+pip install -e .
+
+# Dev dependencies must be installed manually when using pip.
+# See the `[dependency-groups]` section in pyproject.toml for the list.
 ```
 
 ### 2. Install Playwright browsers

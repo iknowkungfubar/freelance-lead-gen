@@ -7,8 +7,8 @@ for CLI and API output.
 from __future__ import annotations as _annotations
 
 import uuid
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 # ── Status Enum ──────────────────────────────────────────────────────────────
 
 
-class LeadStatus(str, Enum):
+class LeadStatus(StrEnum):
     """Lifecycle status of a lead opportunity.
 
     Follows the pipeline progression:
@@ -108,10 +108,10 @@ class LeadOpportunity(BaseModel):
     raw_data: dict[str, Any] = Field(default_factory=dict)
     """Raw platform data preserved for debugging / reprocessing."""
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Timestamp when this record was first created."""
 
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Timestamp of the most recent update."""
 
     # ── validators ──────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ class LeadOpportunity(BaseModel):
 
     def touch(self) -> None:
         """Update *updated_at* to the current UTC time."""
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
 
 # ── Scoring Result ───────────────────────────────────────────────────────────
@@ -206,10 +206,10 @@ class OutboundDraft(BaseModel):
     human_edited: bool = Field(default=False)
     """Did a human manually edit any version of this draft?"""
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """When this draft was first generated."""
 
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """When this draft was last modified."""
 
     # ── computed properties ─────────────────────────────────────────────
@@ -244,15 +244,16 @@ class OutboundDraft(BaseModel):
         -------
         int
             The index of the newly added version.
+
         """
         self.versions.append(body)
         idx = len(self.versions) - 1
         if set_current:
             self.current_version_index = idx
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
         return idx
 
     def approve(self) -> None:
         """Mark the draft as approved."""
         self.approved = True
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)

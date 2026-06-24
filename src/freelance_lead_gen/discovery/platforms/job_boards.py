@@ -12,7 +12,7 @@ import asyncio
 import hashlib
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 import httpx
@@ -20,6 +20,9 @@ import structlog
 
 from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -51,6 +54,7 @@ class RemoteOKExtractor(BasePlatformExtractor):
         An active browser instance (used for fallback only).
     rate_limit : RateLimitConfig or None
         Conservative defaults (2–5 s).
+
     """
 
     def __init__(
@@ -58,6 +62,8 @@ class RemoteOKExtractor(BasePlatformExtractor):
         browser: ManagedBrowser,
         *,
         rate_limit: RateLimitConfig | None = None,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__(
             browser,
@@ -69,6 +75,8 @@ class RemoteOKExtractor(BasePlatformExtractor):
                 max_pages_per_session=5,
                 cooldown_after_session=30.0,
             ),
+            credentials=credentials,
+            settings=settings,
         )
         self._http_client: httpx.AsyncClient | None = None
 
@@ -89,7 +97,6 @@ class RemoteOKExtractor(BasePlatformExtractor):
     async def search(self, query: str) -> None:
         """Remote OK API fetch is done in :meth:`parse_results` directly."""
         # We override extract_listings_raw instead.
-        ...
 
     async def parse_results(self) -> list[RawLead]:
         """Parse results — called by the base :meth:`extract_listings_raw`."""
@@ -109,6 +116,7 @@ class RemoteOKExtractor(BasePlatformExtractor):
         Returns
         -------
         list of RawLead
+
         """
         logger.info("remote_ok.fetching_api")
 
@@ -234,7 +242,7 @@ class RemoteOKExtractor(BasePlatformExtractor):
 
             return leads
         except Exception as exc:
-            logger.error("remote_ok.browser_fallback_failed", error=str(exc))
+            logger.exception("remote_ok.browser_fallback_failed", error=str(exc))
             return []
 
     async def __del__(self) -> None:
@@ -258,6 +266,7 @@ class YCWorkExtractor(BasePlatformExtractor):
     browser : ManagedBrowser
         An active browser instance (used for fallback only).
     rate_limit : RateLimitConfig or None
+
     """
 
     def __init__(
@@ -265,6 +274,8 @@ class YCWorkExtractor(BasePlatformExtractor):
         browser: ManagedBrowser,
         *,
         rate_limit: RateLimitConfig | None = None,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__(
             browser,
@@ -276,6 +287,8 @@ class YCWorkExtractor(BasePlatformExtractor):
                 max_pages_per_session=5,
                 cooldown_after_session=30.0,
             ),
+            credentials=credentials,
+            settings=settings,
         )
         self._http_client: httpx.AsyncClient | None = None
 
@@ -295,7 +308,6 @@ class YCWorkExtractor(BasePlatformExtractor):
 
     async def search(self, query: str) -> None:
         """Overridden — we fetch via API directly."""
-        ...
 
     async def parse_results(self) -> list[RawLead]:
         """Overridden — we fetch via API directly."""
@@ -312,6 +324,7 @@ class YCWorkExtractor(BasePlatformExtractor):
         Returns
         -------
         list of RawLead
+
         """
         logger.info("yc_work.fetching_api")
 
@@ -380,14 +393,14 @@ class YCWorkExtractor(BasePlatformExtractor):
             platform="yc_work",
             platform_job_id=str(job.get("id", _make_id(url))),
             title=title.strip()[:500],
-            company=company if company else None,
+            company=company or None,
             description=description.strip() if description else "",
             url=url,
             posted_date=job.get("createdAt") or job.get("postedDate"),
             budget_min=float(salary_min) if salary_min else None,
             budget_max=float(salary) if salary else None,
             skills=[s.strip() for s in skills] if skills else [],
-            location=location if location else None,
+            location=location or None,
         )
 
     @staticmethod
@@ -404,7 +417,7 @@ class YCWorkExtractor(BasePlatformExtractor):
                 pass
 
         # Try window.__INITIAL_STATE__.
-        match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?});', html, re.DOTALL)
+        match = re.search(r"window\.__INITIAL_STATE__\s*=\s*({.*?});", html, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(1))
@@ -450,7 +463,7 @@ class YCWorkExtractor(BasePlatformExtractor):
 
             return leads
         except Exception as exc:
-            logger.error("yc_work.browser_fallback_failed", error=str(exc))
+            logger.exception("yc_work.browser_fallback_failed", error=str(exc))
             return []
 
     async def __del__(self) -> None:
@@ -488,6 +501,7 @@ class AggregatorExtractor(BasePlatformExtractor):
         - ``location_selector`` (str, optional).
         - ``paginate`` (bool, default True).
         - ``next_page_selector`` (str) — CSS selector for the "next" button.
+
     """
 
     def __init__(
@@ -496,6 +510,8 @@ class AggregatorExtractor(BasePlatformExtractor):
         *,
         rate_limit: RateLimitConfig | None = None,
         site_config: dict[str, Any] | None = None,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__(
             browser,
@@ -507,6 +523,8 @@ class AggregatorExtractor(BasePlatformExtractor):
                 max_pages_per_session=8,
                 cooldown_after_session=45.0,
             ),
+            credentials=credentials,
+            settings=settings,
         )
         self._site_config: dict[str, Any] = {
             "search_url_template": "https://example.com/jobs?q={query}",
@@ -548,7 +566,7 @@ class AggregatorExtractor(BasePlatformExtractor):
             await self._random_delay(2.0, 4.0)
             await self._random_scroll()
         except Exception as exc:
-            logger.error("aggregator.search_navigation_error", query=query, error=str(exc))
+            logger.exception("aggregator.search_navigation_error", query=query, error=str(exc))
             raise
 
     async def parse_results(self) -> list[RawLead]:
@@ -605,7 +623,7 @@ class AggregatorExtractor(BasePlatformExtractor):
 
     # ── Card parsing ────────────────────────────────────────────────────
 
-    async def _parse_card(self, card: Any) -> RawLead | None:  # noqa: ANN401
+    async def _parse_card(self, card: Any) -> RawLead | None:
         """Parse a single card using the configured selectors."""
         cfg = self._site_config
 
@@ -631,7 +649,7 @@ class AggregatorExtractor(BasePlatformExtractor):
     # ── Element helpers ─────────────────────────────────────────────────
 
     @staticmethod
-    async def _get_el_text(card: Any, selector: str) -> str:  # noqa: ANN401
+    async def _get_el_text(card: Any, selector: str) -> str:
         """Get inner text from a child element."""
         if not selector:
             return ""
@@ -642,7 +660,7 @@ class AggregatorExtractor(BasePlatformExtractor):
             return ""
 
     @staticmethod
-    async def _get_el_href(card: Any, selector: str) -> str | None:  # noqa: ANN401
+    async def _get_el_href(card: Any, selector: str) -> str | None:
         """Get ``href`` from a child anchor."""
         try:
             el = await card.query_selector(selector)

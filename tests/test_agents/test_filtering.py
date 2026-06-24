@@ -2,24 +2,20 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 
 from freelance_lead_gen.agents.filtering_agent import (
     FilteringPipeline,
     FilteringReport,
     ScoringThresholds,
-    _LLMClassification,
     _build_classification_input,
+    _LLMClassification,
 )
-from freelance_lead_gen.agents.profile_matcher import TargetProfile
-from freelance_lead_gen.config.settings import get_settings
 from freelance_lead_gen.llm import LLMClient
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus
 from freelance_lead_gen.storage.repository import OpportunityRepository
-
 
 # ── Sample data ─────────────────────────────────────────────────────────────────
 
@@ -93,27 +89,27 @@ class TestScoringThresholds:
 class TestFilteringPipeline:
     """Tests for the FilteringPipeline class."""
 
-    def test_init_defaults(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_defaults(self, test_settings) -> None:
         """Verify pipeline initialises with default dependencies."""
         pipeline = FilteringPipeline(settings=test_settings)
         assert pipeline.thresholds is not None
         assert pipeline.thresholds.high == 75
         assert pipeline.stats["runs"] == 0
 
-    def test_init_with_custom_thresholds(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_with_custom_thresholds(self, test_settings) -> None:
         """Verify custom thresholds are applied."""
         custom = ScoringThresholds(high=90, potential=70)
         pipeline = FilteringPipeline(thresholds=custom, settings=test_settings)
         assert pipeline.thresholds.high == 90
 
-    def test_set_thresholds_updates(self, test_settings) -> None:  # noqa: ANN001
+    def test_set_thresholds_updates(self, test_settings) -> None:
         """Verify set_thresholds updates the threshold values."""
         pipeline = FilteringPipeline(settings=test_settings)
         new = ScoringThresholds(high=80, potential=60)
         pipeline.set_thresholds(new)
         assert pipeline.thresholds.high == 80
 
-    def test_assign_tier(self, test_settings) -> None:  # noqa: ANN001
+    def test_assign_tier(self, test_settings) -> None:
         """Verify _assign_tier returns the correct tier label."""
         pipeline = FilteringPipeline(settings=test_settings)
         assert pipeline._assign_tier(90) == "HIGH"
@@ -122,7 +118,7 @@ class TestFilteringPipeline:
         assert pipeline._assign_tier(50) == "POTENTIAL"
         assert pipeline._assign_tier(30) == "LOW"
 
-    def test_blend_scores(self, test_settings) -> None:  # noqa: ANN001
+    def test_blend_scores(self, test_settings) -> None:
         """Verify _blend_scores combines rule and LLM scores correctly."""
         pipeline = FilteringPipeline(settings=test_settings)
         llm_result = _LLMClassification(
@@ -139,7 +135,7 @@ class TestFilteringPipeline:
         assert blended["score"] == 72
         assert blended["skill_match_score"] == 85
 
-    def test_blend_clamps_extreme_values(self, test_settings) -> None:  # noqa: ANN001
+    def test_blend_clamps_extreme_values(self, test_settings) -> None:
         """Verify _blend_scores clamps the result to 0-100."""
         pipeline = FilteringPipeline(settings=test_settings)
         # LLM score is validated 0-100 by the model; extreme values are
@@ -163,7 +159,7 @@ class TestFilteringPipelineRun:
     """Tests for the FilteringPipeline.run() method."""
 
     @pytest.mark.asyncio
-    async def test_run_rule_based_only(self, test_settings) -> None:  # noqa: ANN001
+    async def test_run_rule_based_only(self, test_settings) -> None:
         """Verify run works without LLM using only rule-based scoring."""
         mock_repo = AsyncMock(spec=OpportunityRepository)
         pipeline = FilteringPipeline(
@@ -177,7 +173,7 @@ class TestFilteringPipelineRun:
         assert isinstance(qualified, list)
 
     @pytest.mark.asyncio
-    async def test_run_with_mocked_llm(self, test_settings) -> None:  # noqa: ANN001
+    async def test_run_with_mocked_llm(self, test_settings) -> None:
         """Verify run uses LLM classification when use_llm=True."""
         mock_repo = AsyncMock(spec=OpportunityRepository)
         mock_llm = AsyncMock(spec=LLMClient)
@@ -197,11 +193,11 @@ class TestFilteringPipelineRun:
             repository=mock_repo,
         )
 
-        qualified, report = await pipeline.run(SAMPLE_OPPS, use_llm=True)
+        _qualified, _report = await pipeline.run(SAMPLE_OPPS, use_llm=True)
         assert mock_llm.structured_classify.await_count >= 1
 
     @pytest.mark.asyncio
-    async def test_run_persists_results(self, test_settings) -> None:  # noqa: ANN001
+    async def test_run_persists_results(self, test_settings) -> None:
         """Verify run persists results when persist=True."""
         mock_repo = AsyncMock(spec=OpportunityRepository)
 
@@ -215,7 +211,7 @@ class TestFilteringPipelineRun:
         assert mock_repo.update.await_count >= 0  # May be disqualified early
 
     @pytest.mark.asyncio
-    async def test_run_empty_input(self, test_settings) -> None:  # noqa: ANN001
+    async def test_run_empty_input(self, test_settings) -> None:
         """Verify run handles an empty list gracefully."""
         pipeline = FilteringPipeline(settings=test_settings)
         qualified, report = await pipeline.run([], use_llm=False)

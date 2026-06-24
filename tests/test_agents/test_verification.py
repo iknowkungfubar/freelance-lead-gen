@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
-
 import pytest
-import pytest_asyncio
 
 from freelance_lead_gen.agents.verification_agent import (
     VerificationAgent,
     VerificationResult,
 )
-from freelance_lead_gen.config.settings import get_settings
-from freelance_lead_gen.llm import LLMClient
 from freelance_lead_gen.models.opportunity import LeadOpportunity, OutboundDraft
-
 
 # ── Sample data ─────────────────────────────────────────────────────────────────
 
@@ -54,18 +48,18 @@ def _make_draft(body: str, subject: str | None = None) -> OutboundDraft:
 class TestVerificationAgentInit:
     """Tests for VerificationAgent initialisation."""
 
-    def test_init_defaults(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_defaults(self, test_settings) -> None:
         """Verify agent initialises with default dependencies."""
         agent = VerificationAgent(settings=test_settings)
         assert agent.quality_threshold == 65
         assert agent.stats["total_verified"] == 0
 
-    def test_init_custom_threshold(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_custom_threshold(self, test_settings) -> None:
         """Verify a custom quality threshold is accepted."""
         agent = VerificationAgent(quality_threshold=80, settings=test_settings)
         assert agent.quality_threshold == 80
 
-    def test_init_clamps_threshold(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_clamps_threshold(self, test_settings) -> None:
         """Verify the threshold is clamped to 0-100."""
         agent = VerificationAgent(quality_threshold=150, settings=test_settings)
         assert agent.quality_threshold == 100
@@ -81,7 +75,7 @@ class TestVerificationFull:
     """Tests for the full verify() method."""
 
     @pytest.mark.asyncio
-    async def test_verify_good_draft_passes(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_good_draft_passes(self, test_settings) -> None:
         """Verify a well-written draft passes all checks."""
         agent = VerificationAgent(settings=test_settings)
         draft = _make_draft(GOOD_DRAFT_TEXT, subject="RAG Pipeline proposal")
@@ -92,7 +86,7 @@ class TestVerificationFull:
         assert len(result.issues) == 0
 
     @pytest.mark.asyncio
-    async def test_verify_banned_phrases_fail(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_banned_phrases_fail(self, test_settings) -> None:
         """Verify banned phrases cause a draft to fail."""
         agent = VerificationAgent(settings=test_settings)
         bad_text = (
@@ -108,7 +102,7 @@ class TestVerificationFull:
         assert "I hope this message finds you well" in result.banned_phrases_found[0]
 
     @pytest.mark.asyncio
-    async def test_verify_ai_markers_fail(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_ai_markers_fail(self, test_settings) -> None:
         """Verify AI identity markers cause a draft to fail."""
         agent = VerificationAgent(settings=test_settings)
         bad_text = (
@@ -122,7 +116,7 @@ class TestVerificationFull:
         assert len(result.ai_markers_found) > 0
 
     @pytest.mark.asyncio
-    async def test_verify_too_short(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_too_short(self, test_settings) -> None:
         """Verify very short drafts have length issues flagged.
 
         Note: the agent's `passed` field only requires score >= threshold
@@ -135,7 +129,7 @@ class TestVerificationFull:
         assert any("short" in i.lower() for i in result.issues)
 
     @pytest.mark.asyncio
-    async def test_verify_missing_skills(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_missing_skills(self, test_settings) -> None:
         """Verify drafts that don't mention required skills are flagged in issues.
 
         The agent reports skill gaps in the issues list but does not block
@@ -150,7 +144,7 @@ class TestVerificationFull:
         assert any("skill" in i.lower() for i in result.issues)
 
     @pytest.mark.asyncio
-    async def test_verify_placeholder_detected(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_placeholder_detected(self, test_settings) -> None:
         """Verify drafts with placeholders have them detected in issues."""
         agent = VerificationAgent(settings=test_settings)
         draft = _make_draft(
@@ -161,7 +155,7 @@ class TestVerificationFull:
         assert any("placeholder" in i.lower() for i in result.issues)
 
     @pytest.mark.asyncio
-    async def test_verify_with_custom_threshold(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_with_custom_threshold(self, test_settings) -> None:
         """Verify the threshold parameter overrides the default."""
         agent = VerificationAgent(quality_threshold=90, settings=test_settings)
         draft = _make_draft(GOOD_DRAFT_TEXT)
@@ -173,7 +167,7 @@ class TestVerificationFull:
         assert isinstance(result, VerificationResult)
 
     @pytest.mark.asyncio
-    async def test_verify_empty_draft_has_issues(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_empty_draft_has_issues(self, test_settings) -> None:
         """Verify an empty draft has issues reported.
 
         The agent reports structural and length issues even though the
@@ -464,7 +458,7 @@ class TestVerifyAndRegenerate:
     """Tests for the verify_and_regenerate method."""
 
     @pytest.mark.asyncio
-    async def test_verify_and_regenerate_good(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_and_regenerate_good(self, test_settings) -> None:
         """Verify verify_and_regenerate returns the draft unchanged when it passes."""
         agent = VerificationAgent(settings=test_settings)
         draft = _make_draft(GOOD_DRAFT_TEXT)
@@ -473,9 +467,9 @@ class TestVerifyAndRegenerate:
         assert isinstance(result, VerificationResult)
 
     @pytest.mark.asyncio
-    async def test_verify_and_regenerate_bad(self, test_settings) -> None:  # noqa: ANN001
+    async def test_verify_and_regenerate_bad(self, test_settings) -> None:
         """Verify verify_and_regenerate returns the failed result."""
         agent = VerificationAgent(settings=test_settings)
         draft = _make_draft("I hope this message finds you well.")
-        final_draft, result = await agent.verify_and_regenerate(draft, SAMPLE_OPP)
+        _final_draft, result = await agent.verify_and_regenerate(draft, SAMPLE_OPP)
         assert result.passed is False

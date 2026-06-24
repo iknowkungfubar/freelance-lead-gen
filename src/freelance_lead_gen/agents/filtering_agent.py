@@ -9,14 +9,13 @@ from __future__ import annotations as _annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
 
 from freelance_lead_gen.agents.profile_matcher import (
-    MatchingWeights,
     ProfileMatcher,
     TargetProfile,
 )
@@ -104,7 +103,7 @@ class FilteringReport:
     """Number disqualified by rule-based filters."""
     errors: int = 0
     """Number of opportunities that errored during scoring."""
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     """When filtering started."""
     completed_at: datetime | None = None
     """When filtering completed."""
@@ -147,9 +146,10 @@ class FilteringPipeline:
         Score tier boundaries.  Uses defaults if not provided.
     settings : Settings or None
         Application settings.
+
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         profile: TargetProfile | None = None,
@@ -223,6 +223,7 @@ class FilteringPipeline:
             The first element is the list of *qualified* opportunities
             (HIGH + POTENTIAL tiers), with their scores and reasoning
             populated.  The second is a detailed run report.
+
         """
         report = FilteringReport()
         report.total_input = len(opportunities)
@@ -318,9 +319,7 @@ class FilteringPipeline:
         for opp in opportunities:
             if opp.status == LeadStatus.REJECTED:
                 tier = self._assign_tier(opp.score or 0) if opp.score else "LOW"
-                if opp.score == 0:
-                    report.low_count += 1
-                elif tier == "LOW":
+                if opp.score == 0 or tier == "LOW":
                     report.low_count += 1
             elif opp.status == LeadStatus.QUALIFIED:
                 tier = self._assign_tier(opp.score or 50)
@@ -331,7 +330,7 @@ class FilteringPipeline:
                 else:
                     report.low_count += 1
 
-        report.completed_at = datetime.now(timezone.utc)
+        report.completed_at = datetime.now(UTC)
 
         # Update lifetime stats.
         self._stats["runs"] += 1
@@ -377,6 +376,7 @@ class FilteringPipeline:
         -------
         LeadScoringResult
             The structured scoring result.
+
         """
         matcher = ProfileMatcher(profile=profile) if profile else self._profile_matcher
         scores = matcher.score_opportunity(opportunity)
@@ -417,6 +417,7 @@ class FilteringPipeline:
         ----------
         thresholds : ScoringThresholds
             New threshold configuration.
+
         """
         self._thresholds = thresholds
         logger.info("filtering.thresholds_updated", thresholds=thresholds.model_dump())
@@ -441,7 +442,7 @@ class FilteringPipeline:
             )
             return _LLMClassification(**result)
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "filtering.llm_classify_failed",
                 opportunity_id=opportunity.id,
                 error=str(exc),
@@ -468,7 +469,7 @@ class FilteringPipeline:
         grounded baseline.
         """
         llm_score = llm_result.score
-        blended_score = int(round(rule_score * 0.4 + llm_score * 0.6))
+        blended_score = round(rule_score * 0.4 + llm_score * 0.6)
         blended_score = max(0, min(100, blended_score))
 
         return {
@@ -504,6 +505,7 @@ def _build_classification_input(opportunity: LeadOpportunity) -> str:
     -------
     str
         Formatted input for the LLM.
+
     """
     parts = [
         f"Title: {opportunity.title}",

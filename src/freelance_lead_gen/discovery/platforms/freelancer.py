@@ -14,13 +14,15 @@ Freelancer.com has moderate anti-bot protection.  This extractor handles:
 
 from __future__ import annotations as _annotations
 
-import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
 
@@ -95,6 +97,7 @@ class FreelancerExtractor(BasePlatformExtractor):
         Optional password for login.
     include_contests : bool
         If *True*, also search contests (default ``False``).
+
     """
 
     def __init__(
@@ -105,6 +108,8 @@ class FreelancerExtractor(BasePlatformExtractor):
         email: str | None = None,
         password: str | None = None,
         include_contests: bool = False,
+        credentials: dict[str, Any] | None = None,
+        settings: Settings | None = None,
     ) -> None:
         super().__init__(
             browser,
@@ -116,9 +121,11 @@ class FreelancerExtractor(BasePlatformExtractor):
                 max_pages_per_session=10,
                 cooldown_after_session=60.0,
             ),
+            credentials=credentials,
+            settings=settings,
         )
-        self._email = email
-        self._password = password
+        self._email = email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        self._password = password or (credentials or {}).get("password")
         self._include_contests = include_contests
 
     # ── BasePlatformExtractor interface ─────────────────────────────────
@@ -138,6 +145,7 @@ class FreelancerExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if login succeeded.
+
         """
         if await self._is_authenticated():
             logger.info("freelancer.already_authenticated")
@@ -181,7 +189,7 @@ class FreelancerExtractor(BasePlatformExtractor):
             return True
 
         except Exception as exc:
-            logger.error("freelancer.login_exception", error=str(exc))
+            logger.exception("freelancer.login_exception", error=str(exc))
             return False
 
     async def search(self, query: str) -> None:
@@ -191,6 +199,7 @@ class FreelancerExtractor(BasePlatformExtractor):
         ----------
         query : str
             Search term for filtering projects.
+
         """
         url = _FREELANCER_SEARCH_URL_TEMPLATE.format(query=query.replace(" ", "+"))
         logger.info("freelancer.searching", query=query)
@@ -200,7 +209,7 @@ class FreelancerExtractor(BasePlatformExtractor):
             await self._random_delay(2.0, 5.0)
             await self._random_scroll()
         except Exception as exc:
-            logger.error("freelancer.search_navigation_error", query=query, error=str(exc))
+            logger.exception("freelancer.search_navigation_error", query=query, error=str(exc))
             raise
 
     async def parse_results(self) -> list[RawLead]:
@@ -209,6 +218,7 @@ class FreelancerExtractor(BasePlatformExtractor):
         Returns
         -------
         list of RawLead
+
         """
         leads = await self._parse_cards(_PROJECT_CARD_SELECTOR, self._parse_project_card)
 
@@ -228,6 +238,7 @@ class FreelancerExtractor(BasePlatformExtractor):
         -------
         bool
             *True* if the next page was loaded.
+
         """
         try:
             next_btn = await self._browser.page.query_selector(_PROJECT_NEXT_PAGE_SELECTOR)
@@ -255,7 +266,7 @@ class FreelancerExtractor(BasePlatformExtractor):
     async def _parse_cards(
         self,
         card_selector: str,
-        parser: Any,  # noqa: ANN401 — callable
+        parser: Any,
     ) -> list[RawLead]:
         """Generic card parsing: query all *card_selector* elements and run *parser* on each."""
         leads: list[RawLead] = []
@@ -277,7 +288,7 @@ class FreelancerExtractor(BasePlatformExtractor):
 
         return leads
 
-    async def _parse_project_card(self, card: Any) -> RawLead | None:  # noqa: ANN401
+    async def _parse_project_card(self, card: Any) -> RawLead | None:
         """Parse a Freelancer project card."""
         title = await self._get_el_text(card, _PROJECT_TITLE_SELECTOR)
         if not title:
@@ -308,7 +319,7 @@ class FreelancerExtractor(BasePlatformExtractor):
             location=location.strip() if location else None,
         )
 
-    async def _parse_contest_card(self, card: Any) -> RawLead | None:  # noqa: ANN401
+    async def _parse_contest_card(self, card: Any) -> RawLead | None:
         """Parse a Freelancer contest listing."""
         title = await self._get_el_text(card, _PROJECT_TITLE_SELECTOR)
         if not title:
@@ -332,7 +343,7 @@ class FreelancerExtractor(BasePlatformExtractor):
             budget_max=budget_max,
         )
 
-    async def _parse_skills(self, card: Any) -> list[str]:  # noqa: ANN401
+    async def _parse_skills(self, card: Any) -> list[str]:
         """Extract skill tags from a card."""
         skills: list[str] = []
         try:
@@ -413,7 +424,7 @@ class FreelancerExtractor(BasePlatformExtractor):
     # ── Element helpers ─────────────────────────────────────────────────
 
     @staticmethod
-    async def _get_el_text(card: Any, selector: str) -> str:  # noqa: ANN401
+    async def _get_el_text(card: Any, selector: str) -> str:
         """Get inner text from a child element."""
         try:
             el = await card.query_selector(selector)
@@ -422,7 +433,7 @@ class FreelancerExtractor(BasePlatformExtractor):
             return ""
 
     @staticmethod
-    async def _get_el_href(card: Any, selector: str) -> str | None:  # noqa: ANN401
+    async def _get_el_href(card: Any, selector: str) -> str | None:
         """Get ``href`` from a child anchor, making relative URLs absolute."""
         try:
             el = await card.query_selector(selector)

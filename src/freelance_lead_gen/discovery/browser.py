@@ -14,7 +14,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import structlog
 from playwright.async_api import (
@@ -88,7 +88,6 @@ class BrowserNotStartedError(RuntimeError):
 class NavigationTimeoutError(BrowserError):
     """Raised when a navigation or page action times out."""
 
-    pass
 
 
 # ── Managed Browser ────────────────────────────────────────────────────────────
@@ -121,9 +120,10 @@ class ManagedBrowser:
         Reuse a specific fingerprint.  ``None`` generates a fresh one.
     launch_args : list[str] or None
         Additional Chromium launch arguments.
+
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         headless: bool = False,
@@ -145,6 +145,7 @@ class ManagedBrowser:
 
         # Runtime state — set when started.
         self._playwright: Playwright | None = None
+        self._browser_instance: Any | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self._fingerprint: BrowserFingerprint | None = fingerprint
@@ -168,9 +169,10 @@ class ManagedBrowser:
         ------
         BrowserNotStartedError
             If the browser has not been started yet.
+
         """
         if self._page is None:
-            raise BrowserNotStartedError()
+            raise BrowserNotStartedError
         return self._page
 
     @property
@@ -196,8 +198,9 @@ class ManagedBrowser:
         ------
         BrowserError
             If Playwright fails to launch or the context cannot be created.
+
         """
-        if self.is_running:
+        if self.is_running or self._playwright is not None:
             logger.warning("browser.already_running")
             return
 
@@ -213,6 +216,7 @@ class ManagedBrowser:
         try:
             self._playwright = await async_playwright().start()
         except Exception as exc:
+            self._playwright = None
             raise BrowserError("Failed to start Playwright", original=exc) from exc
 
         # Build launch options.
@@ -232,14 +236,14 @@ class ManagedBrowser:
             launch_options["proxy"] = {"server": self._proxy_url}
 
         try:
-            browser = await self._playwright.chromium.launch(**launch_options)
+            self._browser_instance = await self._playwright.chromium.launch(**launch_options)
         except Exception as exc:
             await self._playwright.stop()
             self._playwright = None
             raise BrowserError("Failed to launch Chromium", original=exc) from exc
 
         # Build persistent context options from the fingerprint.
-        assert self._fingerprint is not None  # noqa: S101 — fingerprint set above
+        assert self._fingerprint is not None
         fp_kwargs = fingerprint_to_playwright_kwargs(self._fingerprint)
 
         context_options: dict[str, Any] = {
@@ -250,9 +254,10 @@ class ManagedBrowser:
         }
 
         try:
-            self._context = await browser.new_context(**context_options)
+            self._context = await self._browser_instance.new_context(**context_options)
         except Exception as exc:
-            await browser.close()
+            await self._browser_instance.close()
+            self._browser_instance = None
             await self._playwright.stop()
             self._playwright = None
             raise BrowserError("Failed to create browser context", original=exc) from exc
@@ -263,6 +268,30 @@ class ManagedBrowser:
         except Exception as exc:
             await self.abort()
             raise BrowserError("Failed to open new page", original=exc) from exc
+
+        # ── Stealth & anti-detection ───────────────────────────────────
+        # Apply playwright-stealth patches (optional dependency).
+        try:
+            from playwright_stealth import stealth  # type: ignore[import-untyped]
+
+            await stealth(self._page)
+            logger.info("browser.stealth_applied")
+        except ImportError:
+            logger.warning("browser.stealth_not_available", detail="playwright-stealth package not installed")
+
+        # Inject Canvas / WebGL / AudioContext fingerprint randomization.
+        await self._page.add_init_script("""
+// Override WebGL vendor/renderer
+const getParameter = WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter = function(param) {
+  if (param === 37445) return 'Intel Inc.';
+  if (param === 37446) return 'Intel Iris OpenGL Engine';
+  return getParameter.call(this, param);
+};
+// Override navigator properties
+Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+""")
 
         # Store session info.
         self._session_info = BrowserSessionInfo(
@@ -281,29 +310,41 @@ class ManagedBrowser:
         """Gracefully tear down the browser, context, and Playwright.
 
         Safe to call multiple times.  Logs but does not raise on errors
-        during teardown.
+        during teardown.  Cleans up resources in reverse order of creation:
+        page → context → browser instance → Playwright.
         """
-        if self._page and not self._page.is_closed():
+        if self._page is not None:
             try:
-                await self._page.close()
+                if not self._page.is_closed():
+                    await self._page.close()
             except Exception:
                 logger.warning("browser.page_close_error", exc_info=True)
+            self._page = None
 
-        if self._context and not self._context.is_closed():
+        if self._context is not None:
             try:
-                await self._context.close()
+                if not self._context.is_closed():
+                    await self._context.close()
             except Exception:
                 logger.warning("browser.context_close_error", exc_info=True)
+            self._context = None
 
-        if self._playwright:
+        if self._browser_instance is not None:
+            try:
+                if not self._browser_instance.is_connected():
+                    pass  # Already disconnected.
+                await self._browser_instance.close()
+            except Exception:
+                logger.warning("browser.browser_close_error", exc_info=True)
+            self._browser_instance = None
+
+        if self._playwright is not None:
             try:
                 await self._playwright.stop()
             except Exception:
                 logger.warning("browser.playwright_stop_error", exc_info=True)
+            self._playwright = None
 
-        self._page = None
-        self._context = None
-        self._playwright = None
         self._session_info = None
         logger.info("browser.stopped")
 
@@ -314,21 +355,28 @@ class ManagedBrowser:
         """
         errors: list[Exception] = []
 
-        if self._page:
+        if self._page is not None:
             try:
                 await self._page.close()
             except Exception as e:
                 errors.append(e)
             self._page = None
 
-        if self._context:
+        if self._context is not None:
             try:
                 await self._context.close()
             except Exception as e:
                 errors.append(e)
             self._context = None
 
-        if self._playwright:
+        if self._browser_instance is not None:
+            try:
+                await self._browser_instance.close()
+            except Exception as e:
+                errors.append(e)
+            self._browser_instance = None
+
+        if self._playwright is not None:
             try:
                 await self._playwright.stop()
             except Exception as e:
@@ -340,7 +388,7 @@ class ManagedBrowser:
 
     # ── Context manager ─────────────────────────────────────────────────
 
-    async def __aenter__(self) -> ManagedBrowser:
+    async def __aenter__(self) -> Self:
         """Start the browser and return self for use as an async context manager.
 
         Usage::
@@ -393,11 +441,12 @@ class ManagedBrowser:
             The active page (post-navigation).
 
         Raises
-        -------
+        ------
         NavigationTimeoutError
             If navigation times out.
         BrowserError
             For other navigation failures.
+
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -445,6 +494,7 @@ class ManagedBrowser:
         -------
         str
             The extracted text content (whitespace-stripped).
+
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -474,6 +524,7 @@ class ManagedBrowser:
         -------
         str
             Element text content, or ``""`` if not found.
+
         """
         return await self.extract_text(selector, timeout_ms=timeout_ms)
 
@@ -504,6 +555,7 @@ class ManagedBrowser:
         ------
         BrowserError
             If the click fails or the element is not found.
+
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -551,6 +603,7 @@ class ManagedBrowser:
             Min/max delay (seconds) between individual keystrokes.
         clear_first : bool
             Clear the field before typing (default ``True``).
+
         """
         self._ensure_running()
 
@@ -592,6 +645,7 @@ class ManagedBrowser:
             random factor (0.6–0.9).
         smooth : bool
             Use smooth scrolling behaviour (default ``True``).
+
         """
         self._ensure_running()
 
@@ -608,10 +662,11 @@ class ManagedBrowser:
         axis = delta.get(direction, "y")
 
         try:
+            smooth_str = "smooth" if smooth else "instant"
             script = (
-                f"window.scrollBy({{"
-                f"  {axis}: {sign * amount},"
-                f"  behavior: {'\"smooth\"' if smooth else '\"instant\"'}"
+                f"window.scrollBy({{\n"
+                f"  {axis}: {sign * amount},\n"
+                f"  behavior: '{smooth_str}'"
                 f"}});"
             )
             await self.page.evaluate(script)
@@ -627,6 +682,7 @@ class ManagedBrowser:
         ----------
         selector : str
             CSS selector for the target element.
+
         """
         self._ensure_running()
         try:
@@ -662,6 +718,7 @@ class ManagedBrowser:
         ------
         BrowserError
             If the screenshot fails.
+
         """
         self._ensure_running()
         try:
@@ -685,6 +742,7 @@ class ManagedBrowser:
         -------
         list of dict
             Each cookie dict contains ``name``, ``value``, ``domain``, etc.
+
         """
         self._ensure_running()
         return await self._context.cookies()  # type: ignore[union-attr]
@@ -698,6 +756,7 @@ class ManagedBrowser:
         ----------
         cookies : list of dict
             Playwright-compatible cookie list.
+
         """
         self._ensure_running()
         await self._context.add_cookies(cookies)  # type: ignore[union-attr]
@@ -710,6 +769,7 @@ class ManagedBrowser:
         ----------
         path : str or Path
             JSON file to write.
+
         """
         import json
 
@@ -731,6 +791,7 @@ class ManagedBrowser:
         -------
         int
             Number of cookies restored.
+
         """
         import json
 
@@ -780,6 +841,7 @@ class ManagedBrowser:
         -------
         bool
             *True* if the element reached the expected state, *False* on timeout.
+
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -800,6 +862,7 @@ class ManagedBrowser:
         Returns
         -------
         bool
+
         """
         self._ensure_running()
         try:
@@ -819,6 +882,7 @@ class ManagedBrowser:
         -------
         Any
             The return value of the script.
+
         """
         self._ensure_running()
         return await self.page.evaluate(script)
@@ -853,6 +917,7 @@ class ManagedBrowser:
         -------
         dict
             Parsed JSON response (or ``{"raw": text}`` if not JSON).
+
         """
         self._ensure_running()
         opts = {"method": method, "headers": headers or {}}
@@ -890,6 +955,7 @@ class ManagedBrowser:
             Maximum wait time.
         wait_until : str
             When to consider navigation complete.
+
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -916,13 +982,14 @@ class ManagedBrowser:
         -------
         str
             The redirect target URL.
+
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
         try:
             current = self.page.url
             await self.page.wait_for_url(
-                f"**/*",
+                "**/*",
                 timeout=timeout,
             )
             new_url = self.page.url
@@ -963,6 +1030,7 @@ class ManagedBrowser:
         ------
         BrowserError
             If all retries are exhausted.
+
         """
         last_error: Exception | None = None
         for attempt in range(1, retries + 1):
@@ -992,7 +1060,7 @@ class ManagedBrowser:
     def _ensure_running(self) -> None:
         """Guard: raise if the browser is not ready."""
         if not self.is_running or self._page is None:
-            raise BrowserNotStartedError()
+            raise BrowserNotStartedError
 
     async def _jitter(self) -> None:
         """Introduce a random Gaussian delay to simulate human latency."""
@@ -1021,6 +1089,7 @@ class ManagedBrowser:
             Fractional horizontal offset into the element (0-1, default 0.5).
         offset_y : float
             Fractional vertical offset (0-1, default 0.5).
+
         """
         self._ensure_running()
         bbox = await self.page.locator(selector).bounding_box()

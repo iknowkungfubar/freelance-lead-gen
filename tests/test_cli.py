@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from click.testing import CliRunner
-import pytest
 
 from freelance_lead_gen.cli import main
 

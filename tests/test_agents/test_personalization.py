@@ -2,25 +2,19 @@
 
 from __future__ import annotations
 
-import re
+from datetime import UTC
 from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 
 from freelance_lead_gen.agents.personalization_agent import (
     DraftGenerationError,
     PersonalizationAgent,
     PersonalizationReport,
-    _DraftGeneration,
-    _AI_MARKER_PATTERNS,
-    _BANNED_PHRASES,
 )
 from freelance_lead_gen.agents.profile_matcher import TargetProfile
-from freelance_lead_gen.config.settings import get_settings
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus, OutboundDraft
 from freelance_lead_gen.storage.repository import OpportunityRepository
-
 
 # ── Sample data ─────────────────────────────────────────────────────────────────
 
@@ -51,14 +45,14 @@ SAMPLE_PROFILE = TargetProfile.default()
 class TestPersonalizationAgentInit:
     """Tests for PersonalizationAgent initialisation."""
 
-    def test_init_defaults(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_defaults(self, test_settings) -> None:
         """Verify agent initialises with default dependencies."""
         agent = PersonalizationAgent(settings=test_settings)
         assert agent.stats["runs"] == 0
         assert agent.stats["total_drafted"] == 0
         assert len(agent.banned_phrases) > 0
 
-    def test_init_with_custom_deps(self, test_settings) -> None:  # noqa: ANN001
+    def test_init_with_custom_deps(self, test_settings) -> None:
         """Verify agent accepts custom dependencies."""
         mock_repo = AsyncMock(spec=OpportunityRepository)
         mock_llm = AsyncMock()
@@ -75,7 +69,7 @@ class TestPersonalizationGenerateDraft:
     """Tests for draft generation."""
 
     @pytest.mark.asyncio
-    async def test_generate_draft_success(self, test_settings) -> None:  # noqa: ANN001
+    async def test_generate_draft_success(self, test_settings) -> None:
         """Verify draft generation produces a valid OutboundDraft."""
         mock_llm = AsyncMock()
         mock_llm.chat_completion.return_value = {
@@ -112,7 +106,7 @@ class TestPersonalizationGenerateDraft:
         mock_repo.create_draft.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_generate_draft_quality_retry(self, test_settings) -> None:  # noqa: ANN001
+    async def test_generate_draft_quality_retry(self, test_settings) -> None:
         """Verify the agent retries when quality checks fail."""
         mock_llm = AsyncMock()
         # First call returns a banned phrase draft; second returns a clean one.
@@ -159,7 +153,7 @@ class TestPersonalizationGenerateDraft:
         assert mock_llm.chat_completion.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_generate_draft_all_retries_exhausted(self, test_settings) -> None:  # noqa: ANN001
+    async def test_generate_draft_all_retries_exhausted(self, test_settings) -> None:
         """Verify the agent raises when the LLM keeps failing."""
         mock_llm = AsyncMock()
         # LLM keeps raising errors — even after retries the agent fails.
@@ -177,7 +171,7 @@ class TestPersonalizationGenerateDraft:
             await agent.generate_draft(SAMPLE_OPP, SAMPLE_PROFILE, max_retries_on_quality=1)
 
     @pytest.mark.asyncio
-    async def test_generate_draft_llm_error(self, test_settings) -> None:  # noqa: ANN001
+    async def test_generate_draft_llm_error(self, test_settings) -> None:
         """Verify the agent handles LLM failures gracefully."""
         mock_llm = AsyncMock()
         mock_llm.chat_completion.side_effect = RuntimeError("LLM unavailable")
@@ -327,10 +321,10 @@ class TestPersonalizationReport:
 
     def test_elapsed_seconds_computed(self) -> None:
         """Verify elapsed_seconds works when completed."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         report = PersonalizationReport(
-            started_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            completed_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=timezone.utc),
+            started_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
+            completed_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=UTC),
         )
         assert report.elapsed_seconds == 60.0

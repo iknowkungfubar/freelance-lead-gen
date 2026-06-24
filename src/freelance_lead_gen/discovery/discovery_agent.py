@@ -11,19 +11,21 @@ from __future__ import annotations as _annotations
 import asyncio
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from freelance_lead_gen.config.settings import Settings, get_settings
 from freelance_lead_gen.discovery.browser import ManagedBrowser
-from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms import PLATFORM_EXTRACTORS
-from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
 from freelance_lead_gen.discovery.scheduler import DiscoveryScheduler
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus
 from freelance_lead_gen.storage.repository import OpportunityRepository
+
+if TYPE_CHECKING:
+    from freelance_lead_gen.discovery.extractor import RawLead
+    from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor
 
 logger = structlog.get_logger(__name__)
 
@@ -67,7 +69,7 @@ class DiscoveryCycleReport:
     platforms_succeeded: int = 0
     """Number of platforms that completed without error."""
 
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     """When this cycle started."""
 
     completed_at: datetime | None = None
@@ -115,9 +117,10 @@ class DiscoveryAgent:
         Repository for persistence.  Created with defaults if not provided.
     search_queries : list of str or None
         Search terms to use.  Defaults to those from settings.
+
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         settings: Settings | None = None,
@@ -201,10 +204,14 @@ class DiscoveryAgent:
                 # browser.  For HTTP-based extractors (RemoteOK, YCWork), they
                 # accept browser only for fallback.
                 try:
-                    extractor = extractor_cls(browser=self._browser)
+                    extractor = extractor_cls(
+                        browser=self._browser,
+                        credentials={},
+                        settings=self._settings,
+                    )
                     self._platform_extractors[platform_name] = extractor
                 except Exception as exc:
-                    logger.error(
+                    logger.exception(
                         "discovery_agent.extractor_init_failed",
                         platform=platform_name,
                         error=str(exc),
@@ -247,9 +254,10 @@ class DiscoveryAgent:
         -------
         DiscoveryCycleReport
             Structured report with per-platform breakdowns.
+
         """
         report = DiscoveryCycleReport()
-        report.started_at = datetime.now(timezone.utc)
+        report.started_at = datetime.now(UTC)
 
         targets = platforms or self._enabled_platforms
 
@@ -331,7 +339,7 @@ class DiscoveryAgent:
         if self._stats["started_at"] is None:
             self._stats["started_at"] = report.started_at
 
-        report.completed_at = datetime.now(timezone.utc)
+        report.completed_at = datetime.now(UTC)
 
         logger.info(
             "discovery_agent.cycle_completed",
@@ -360,6 +368,7 @@ class DiscoveryAgent:
         Returns
         -------
         dict with keys: ``found``, ``new``, ``searched``, ``failed``.
+
         """
         total_found = 0
         total_new = 0
@@ -369,7 +378,7 @@ class DiscoveryAgent:
         for query in queries:
             for attempt in range(1, _MAX_RETRIES + 1):
                 try:
-                    raw_leads = await extractor.extract_listings_raw()
+                    raw_leads = await extractor.extract_listings_raw(query=query)
                     searched += 1
 
                     # Deduplicate and persist.
@@ -408,7 +417,7 @@ class DiscoveryAgent:
                         )
                         await asyncio.sleep(backoff)
                     else:
-                        logger.error(
+                        logger.exception(
                             "discovery_agent.retry_exhausted",
                             platform=platform_name,
                             query=query,
@@ -449,6 +458,7 @@ class DiscoveryAgent:
         -------
         int
             Number of *new* (previously unseen) opportunities created.
+
         """
         new_count = 0
 
@@ -473,7 +483,7 @@ class DiscoveryAgent:
                     new_count += 1
 
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "discovery_agent.persist_failed",
                     platform=platform_name,
                     title=raw.title[:60] if raw.title else "?",
@@ -501,6 +511,7 @@ class DiscoveryAgent:
         Returns
         -------
         LeadOpportunity
+
         """
         # Parse date from the raw posted_date string if present.
         posted_date = None
@@ -552,6 +563,7 @@ class DiscoveryAgent:
         -------
         DiscoveryScheduler
             A pre-configured scheduler linked to this agent.
+
         """
         cap = daily_cap or self._settings.discovery.max_daily
 

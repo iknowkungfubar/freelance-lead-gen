@@ -54,21 +54,21 @@ from freelance_lead_gen.agents.verification_agent import (
 )
 
 __all__ = [
-    # Orchestrator
-    "LeadGenOrchestrator",
-    "OrchestratorReport",
-    "PipelinePhase",
     # Filtering
     "FilteringPipeline",
     "FilteringReport",
-    "ScoringThresholds",
-    # Profile matching
-    "TargetProfile",
-    "ProfileMatcher",
+    # Orchestrator
+    "LeadGenOrchestrator",
     "MatchingWeights",
+    "OrchestratorReport",
     # Personalization
     "PersonalizationAgent",
     "PersonalizationReport",
+    "PipelinePhase",
+    "ProfileMatcher",
+    "ScoringThresholds",
+    # Profile matching
+    "TargetProfile",
     # Verification
     "VerificationAgent",
     "VerificationResult",

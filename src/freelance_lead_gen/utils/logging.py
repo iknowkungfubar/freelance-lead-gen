@@ -9,7 +9,6 @@ from __future__ import annotations as _annotations
 
 import os
 import sys
-from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any
 
@@ -38,8 +37,8 @@ def set_trace_id(trace_id: str | None) -> None:
 
 
 def _add_trace_id(
-    logger: structlog.types.WrappedLogger,  # noqa: ARG001
-    method_name: str,  # noqa: ARG001
+    logger: structlog.types.WrappedLogger,
+    method_name: str,
     event_dict: structlog.types.EventDict,
 ) -> structlog.types.EventDict:
     """Inject the active *trace_id* into every log event, if present."""
@@ -50,8 +49,8 @@ def _add_trace_id(
 
 
 def _drop_debug_keys(
-    logger: structlog.types.WrappedLogger,  # noqa: ARG001
-    method_name: str,  # noqa: ARG001
+    logger: structlog.types.WrappedLogger,
+    method_name: str,
     event_dict: structlog.types.EventDict,
 ) -> structlog.types.EventDict:
     """Drop internal structlog keys so output stays clean."""
@@ -75,6 +74,7 @@ def configure_logging(*, level: str | None = None, json: bool | None = None) -> 
         If *True*, emit newline-delimited JSON (ideal for production).
         If *False*, emit coloured console output (ideal for development).
         Defaults to ``False`` unless the *JSON_LOGS* env var is set to ``true``.
+
     """
     if level is None:
         level = os.environ.get("LOG_LEVEL", "INFO").upper()
