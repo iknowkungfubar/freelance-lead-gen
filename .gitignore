@@ -154,3 +154,4 @@ reports/
 !*.example.html
 !*.sample.html
 !**/templates/**/*.html
+:memory:
