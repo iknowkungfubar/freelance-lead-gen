@@ -29,6 +29,16 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# ── Valid FTS column names ───────────────────────────────────────────────────
+
+_VALID_FTS_COLUMNS: frozenset[str] = frozenset({
+    "id", "platform", "platform_job_id", "title", "company", "description",
+    "budget_min", "budget_max", "currency", "skills", "posted_date", "url",
+    "location", "status", "score", "notes", "raw_data", "created_at", "updated_at",
+})
+"""Column names allowed in FTS WHERE clause extra_params."""
+
+
 # ── Custom exceptions ────────────────────────────────────────────────────────
 
 
@@ -457,6 +467,12 @@ class OpportunityRepository:
         )
         if not fts_query:
             return []
+
+        # Validate extra_params keys against known column names.
+        invalid_keys = set(extra_params) - _VALID_FTS_COLUMNS
+        if invalid_keys:
+            msg = f"Invalid FTS column name(s): {', '.join(sorted(invalid_keys))}"
+            raise ValueError(msg)
 
         conditions = ["opportunities_fts MATCH :fts_query"]
         params: dict[str, Any] = {

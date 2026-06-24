@@ -29,6 +29,11 @@ if TYPE_CHECKING:
     from freelance_lead_gen.models.opportunity import OutboundDraft
     from freelance_lead_gen.storage.repository import OpportunityRepository
 
+from freelance_lead_gen.utils.anti_ai import (
+    _AI_MARKER_PATTERNS,
+    BANNED_PHRASE_PATTERNS,
+)
+
 # ── Colours (matching Tokyo Night palette) ───────────────────────────────
 
 TEXT = "#c0caf5"
@@ -40,17 +45,11 @@ ERROR = "#f7768e"
 DIM = "#565f89"
 SURFACE = "#24283b"
 
-# ── Anti-AI flag patterns ─────────────────────────────────────────────────
+# ── Anti-AI flag patterns (imported from utils.anti_ai) ─────────────────────
 
-ANTI_AI_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\b(as an AI|I'm an AI|as a language model|I cannot)\b", re.IGNORECASE),
-    re.compile(r"\b(I don't have personal|I don't have access)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(As a helpful|I'm here to help|let me know if you have any questions)\b", re.IGNORECASE
-    ),
-    re.compile(r"\b(Please let me know if|Feel free to reach out)\b", re.IGNORECASE),
-    re.compile(r"\b(I hope this message finds you well|I am writing to express)\b", re.IGNORECASE),
-]
+# Merged pattern list: AI identity markers + banned-phrase patterns
+# (the content editor flags both categories as "anti-AI").
+ANTI_AI_PATTERNS: list[re.Pattern[str]] = [*_AI_MARKER_PATTERNS, *BANNED_PHRASE_PATTERNS]
 
 # ── AFK detection pattern (AI-sounding boilerplate) ───────────────────────
 

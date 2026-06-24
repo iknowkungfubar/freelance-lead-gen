@@ -101,6 +101,9 @@ class RawLead:
     raw_html: str | None = None
     """Raw HTML snippet of the listing card (for debugging / re-parsing)."""
 
+    extra: dict[str, Any] = field(default_factory=dict)
+    """Extra fields extracted via extra_selectors (free-form key/value pairs)."""
+
     extracted_at: str = field(
         default_factory=lambda: datetime.now(UTC).isoformat()
     )
@@ -369,7 +372,7 @@ class GenericPlaywrightExtractor(Extractor):
             posted_date=posted_text.strip() if posted_text else None,
             budget_min=budget_min,
             budget_max=budget_max,
-            extra=extra,  # type: ignore[arg-type]
+            extra=extra,
         )
 
     # ── Element helpers ─────────────────────────────────────────────────

@@ -223,11 +223,11 @@ def generate_fingerprint(
 
 
 def fingerprint_to_playwright_kwargs(fp: BrowserFingerprint) -> dict:
-    """Map a :class:`BrowserFingerprint` to Playwright ``launch_persistent_context`` kwargs.
+    """Map a :class:`BrowserFingerprint` to Playwright ``new_context`` kwargs.
 
     This produces the *extra_http_headers*, *viewport*, *locale*, and
-    *timezone_id* arguments that make a Playwright context resemble the
-    fingerprint.
+    *timezone_id* arguments that make a Playwright browser context resemble
+    the fingerprint.
     """
     return {
         "user_agent": fp.user_agent,

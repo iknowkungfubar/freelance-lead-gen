@@ -24,7 +24,6 @@ class _BrowserSettings(BaseSettings):
         default="./browser_data",
         description="Path to the browser user data directory.",
     )
-    profile_name: str = Field(default="Default", description="Browser profile name to use.")
     viewport_width: int = Field(default=1920, ge=800, le=3840, description="Default viewport width (px).")
     viewport_height: int = Field(default=1080, ge=600, le=2160, description="Default viewport height (px).")
 
@@ -157,18 +156,22 @@ class Settings(BaseSettings):
     # These nested models use their own env_prefix via SettingsConfigDict.
 
     def model_post_init(self, __context: object, /) -> None:
-        """Resolve the .env file path relative to the project root.
+        """Emit a warning if no ``.env`` file can be found.
 
-        Walks up from the current working directory looking for ``.env``.
-        Falls back silently if none is found.
+        pydantic-settings already loads the ``.env`` file specified by
+        ``model_config.env_file``; this hook checks that the file actually
+        exists and warns if it doesn't, which helps with deployment issues.
         """
-        # pydantic-settings already handles env_file; this hook is a safety
-        # net for when the CWD is not the project root.
-        env_candidates = [Path.cwd() / ".env", Path.cwd().parent / ".env"]
-        for candidate in env_candidates:
-            if candidate.is_file():
-                # Already loaded by SettingsConfigDict — nothing to do.
-                return
+        env_file = self.model_config.get("env_file")
+        if env_file:
+            resolved = Path.cwd() / env_file
+            if not resolved.is_file():
+                import structlog
+                structlog.get_logger(__name__).warning(
+                    "settings.env_file_not_found",
+                    path=str(resolved),
+                    hint="Create a .env file or set environment variables directly.",
+                )
 
 
 # ── Cached singleton factory ──────────────────────────────────────────────────

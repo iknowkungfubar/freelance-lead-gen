@@ -224,8 +224,21 @@ class DiscoveryAgent:
         )
 
     async def shutdown(self) -> None:
-        """Clean up resources — stop the browser if we started it."""
+        """Clean up resources — stop the browser and close platform extractors."""
         logger.info("discovery_agent.shutting_down")
+
+        # Close any platform extractors that have an explicit close method.
+        for platform_name, extractor in self._platform_extractors.items():
+            close_method = getattr(extractor, "close", None)
+            if close_method is not None:
+                try:
+                    await close_method()
+                except Exception as exc:
+                    logger.warning(
+                        "discovery_agent.extractor_close_error",
+                        platform=platform_name,
+                        error=str(exc),
+                    )
 
         if self._browser is not None and self._browser.is_running:
             await self._browser.stop()

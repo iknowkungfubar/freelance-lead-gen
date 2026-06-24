@@ -12,6 +12,7 @@ import abc
 import asyncio
 import contextlib
 import random
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -93,6 +94,8 @@ class BasePlatformExtractor(abc.ABC):
         self._authenticated: bool = False
         self._current_page: int = 0
         self._session_start: float | None = None
+        self._last_request_time: float = 0.0
+        """Unix timestamp of the last request (for rate-limit enforcement)."""
 
     # ── Abstract interface ──────────────────────────────────────────────
 
@@ -206,6 +209,7 @@ class BasePlatformExtractor(abc.ABC):
             logger.error("platform.auth_failed", platform=self.platform_name)
             return []
 
+        await self._enforce_rate_limit()
         await self._rate_limit_delay()
         await self.search(query)
 
@@ -309,6 +313,22 @@ class BasePlatformExtractor(abc.ABC):
         return elapsed > 1800
 
     # ── Anti-detection helpers ──────────────────────────────────────────
+
+    async def _enforce_rate_limit(self) -> None:
+        """Ensure the minimum delay between consecutive requests has elapsed.
+
+        Tracks wall-clock time since the last request and sleeps for any
+        remaining portion of the minimum delay.  This prevents burst
+        sequences when successive calls receive short random delays.
+        """
+        now = time.time()
+        elapsed = now - self._last_request_time
+        min_delay = self._rate_limit.min_delay
+
+        if elapsed < min_delay:
+            await asyncio.sleep(min_delay - elapsed)
+
+        self._last_request_time = time.time()
 
     async def _rate_limit_delay(self) -> None:
         """Wait for the configured rate-limiting delay with random jitter."""

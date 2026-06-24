@@ -42,7 +42,6 @@ dependencies = [
     # Database
     "sqlalchemy>=2.0",
     "aiosqlite>=0.20",
-    "alembic>=1.13",
     # Terminal UI
     "textual>=0.52",
     "textual-plotext>=1.0",

@@ -22,6 +22,7 @@ import structlog
 from rich.console import Console
 from rich.table import Column, Table
 
+from freelance_lead_gen.agents.orchestrator import LeadGenOrchestrator
 from freelance_lead_gen.config.settings import get_settings
 from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
 from freelance_lead_gen.models.opportunity import LeadStatus
@@ -68,13 +69,66 @@ async def _do_init() -> None:
 
 
 @main.command()
-def discover() -> None:
+@click.option("--headless/--no-headless", default=True, help="Run browser in headless mode")
+def discover(headless: bool) -> None:
     """Run the discovery phase.
 
     Searches all enabled platforms for new freelance opportunities and persists
     them to the database.
     """
-    click.echo("Running discovery... (not yet implemented in CLI)")
+    try:
+        asyncio.run(_do_discover(headless=headless))
+    except (RuntimeError, DatabaseError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Unexpected error: {exc}", err=True)
+        sys.exit(1)
+
+
+async def _do_discover(headless: bool) -> None:
+    """Async implementation of the discover command."""
+    try:
+        await init_db()
+    except Exception as exc:
+        click.echo(
+            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
+            err=True,
+        )
+        return
+
+    settings = get_settings()
+    settings.browser.headless = headless
+    agent = DiscoveryAgent(settings=settings)
+    await agent.initialize()
+
+    click.echo("Starting discovery cycle...")
+    report = await agent.run_discovery_cycle()
+    await agent.shutdown()
+
+    # Display results.
+    console.print("\n[bold]Discovery Complete[/bold]")
+    console.print(f"  Platforms attempted:  {report.platforms_attempted}")
+    console.print(f"  Platforms succeeded:  {report.platforms_succeeded}")
+    console.print(f"  Total leads found:    [bold]{report.total_found}[/bold]")
+    console.print(f"  New leads persisted:  [bold green]{report.total_new}[/bold green]")
+    console.print(f"  Errors:               {report.total_errors}")
+    if report.elapsed_seconds is not None:
+        console.print(f"  Elapsed time:         {report.elapsed_seconds:.1f}s")
+
+    if report.per_platform:
+        table = Table(
+            Column("Platform"),
+            Column("Found", justify="right"),
+            Column("New", justify="right"),
+            Column("Succeeded"),
+            title="Per-Platform Breakdown",
+            title_style="bold",
+        )
+        for pname, pdata in sorted(report.per_platform.items()):
+            succeeded = "✓" if pdata.get("failed", 0) == 0 else "✗"
+            table.add_row(pname, str(pdata.get("found", 0)), str(pdata.get("new", 0)), succeeded)
+        console.print(table)
 
 
 # ── pipeline ──────────────────────────────────────────────────────────────────
@@ -86,13 +140,77 @@ def discover() -> None:
     default=True,
     help="Run the discovery phase as part of the pipeline",
 )
-def pipeline(discover: bool) -> None:
+@click.option(
+    "--headless/--no-headless",
+    default=True,
+    help="Run browser in headless mode",
+)
+def pipeline(discover: bool, headless: bool) -> None:
     """Run the full pipeline.
 
     Executes all phases in sequence: discovery (optional), qualification,
     personalisation, verification, and human-in-the-loop review.
     """
-    click.echo("Running pipeline... (not yet implemented in CLI)")
+    try:
+        asyncio.run(_do_pipeline(run_discovery=discover, headless=headless))
+    except (RuntimeError, DatabaseError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Unexpected error: {exc}", err=True)
+        sys.exit(1)
+
+
+async def _do_pipeline(run_discovery: bool, headless: bool) -> None:
+    """Async implementation of the pipeline command."""
+    try:
+        await init_db()
+    except Exception as exc:
+        click.echo(
+            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
+            err=True,
+        )
+        return
+
+    settings = get_settings()
+    settings.browser.headless = headless
+
+    console.print("[bold]Initialising pipeline...[/bold]")
+
+    orchestrator = LeadGenOrchestrator(settings=settings)
+    await orchestrator.initialize()
+
+    try:
+        report = await orchestrator.run_full_pipeline(
+            run_discovery=run_discovery,
+        )
+    finally:
+        await orchestrator.shutdown()
+
+    # Display report.
+    summary = report.summary
+    console.print("\n[bold]Pipeline Complete[/bold]")
+    console.print(f"  Success:              {'[green]Yes[/green]' if summary['success'] else '[red]No[/red]'}")
+    console.print(f"  Phases completed:     {', '.join(report.phases_completed) if report.phases_completed else '[dim]none[/dim]'}")
+    if report.phases_failed:
+        console.print(f"  Phases failed:        [red]{', '.join(report.phases_failed)}[/red]")
+    console.print(f"  Leads discovered:     {summary['discovered']}")
+    console.print(f"  Leads qualified:      {summary['qualified']}")
+    console.print(f"  Drafts generated:     {summary['drafted']}")
+    console.print(f"  Verified pass:        {summary['verified_pass']}")
+    console.print(f"  Verified fail:        {summary['verified_fail']}")
+    console.print(f"  Reviewed:             {summary['reviewed']}")
+    console.print(f"  Errors:               {summary['errors']}")
+    if summary.get("elapsed_seconds") is not None:
+        console.print(f"  Elapsed time:         {summary['elapsed_seconds']:.1f}s")
+
+    if report.errors:
+        console.print("\n[bold]Error Details:[/bold]")
+        for err in report.errors:
+            console.print(f"  [{err['phase']}] {err.get('opportunity_id', '')}: {err['message']}")
+
+    if not summary["success"]:
+        sys.exit(1)
 
 
 # ── review ────────────────────────────────────────────────────────────────────
@@ -105,7 +223,32 @@ def review() -> None:
     Opens the terminal UI focused on the review queue, showing drafts that
     need human approval.
     """
-    click.echo("Opening review queue... (not yet implemented in CLI)")
+    try:
+        asyncio.run(_do_review())
+    except (RuntimeError, DatabaseError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Unexpected error: {exc}", err=True)
+        sys.exit(1)
+
+
+async def _do_review() -> None:
+    """Async implementation of the review command — launches the Textual TUI."""
+    try:
+        await init_db()
+    except Exception as exc:
+        click.echo(
+            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}",
+            err=True,
+        )
+        return
+
+    from freelance_lead_gen.ui.app import LeadGenTUI
+
+    app = LeadGenTUI()
+    await app.run_async()
+    click.echo("Review session ended.")
 
 
 # ── list ──────────────────────────────────────────────────────────────────────

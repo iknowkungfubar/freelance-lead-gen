@@ -26,50 +26,9 @@ from freelance_lead_gen.config.settings import Settings, get_settings
 from freelance_lead_gen.llm import LLMClient
 from freelance_lead_gen.models.opportunity import LeadOpportunity, OutboundDraft
 from freelance_lead_gen.storage.repository import OpportunityRepository
+from freelance_lead_gen.utils.anti_ai import _AI_MARKER_PATTERNS, _BANNED_PHRASES
 
 logger = structlog.get_logger(__name__)
-
-# ── Banned phrases (loaded from ANTI_AI_PROMPT + extra) ────────────────────────
-
-_BANNED_PHRASES: list[str] = [
-    # Directly from ANTI_AI_PROMPT.
-    "i hope this message finds you well",
-    "i came across your project",
-    "i am writing to express my interest",
-    "i believe my skills would be a great fit",
-    "i look forward to the possibility",
-    "please let me know if you have any questions",
-    "i am confident that i can deliver",
-    "thank you for considering my application",
-    "best regards",
-    "kind regards",
-    "warm regards",
-    "i would love to join your team",
-    "i am excited about the opportunity",
-    "i have reviewed your requirements",
-    # Additional banned patterns.
-    "i am writing to apply",
-    "i am submitting my proposal",
-    "i am very interested",
-    "i believe that my experience",
-    "as per your requirements",
-    "please find attached",
-    "i would be a great asset",
-    "i am eager to",
-    "let's connect",
-    "looking forward to hearing from you",
-    "don't hesitate to reach out",
-    "feel free to contact me",
-]
-
-_AI_MARKER_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\b(as an AI|as a language model|as an LLM)\b", re.IGNORECASE),
-    re.compile(r"\bI cannot\b.*\b(AI|language model)\b", re.IGNORECASE),
-    re.compile(r"\bI don't have (access|personal|emotions)\b", re.IGNORECASE),
-    re.compile(r"\bmy knowledge cutoff\b", re.IGNORECASE),
-    re.compile(r"\bI'm an AI\b", re.IGNORECASE),
-    re.compile(r"\bI was trained\b", re.IGNORECASE),
-]
 
 
 # ── LLM output schema ──────────────────────────────────────────────────────────

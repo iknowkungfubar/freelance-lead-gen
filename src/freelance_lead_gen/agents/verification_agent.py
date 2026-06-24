@@ -15,8 +15,14 @@ import structlog
 from pydantic import BaseModel, Field
 
 from freelance_lead_gen.config.settings import Settings, get_settings
+from freelance_lead_gen.utils.anti_ai import _AI_MARKER_PATTERNS
+from freelance_lead_gen.utils.anti_ai import (
+    BANNED_PHRASE_PATTERNS as _BANNED_PHRASE_PATTERNS,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from freelance_lead_gen.llm import LLMClient
     from freelance_lead_gen.models.opportunity import LeadOpportunity, OutboundDraft
 
@@ -42,37 +48,8 @@ _MAX_SUBJECT_LENGTH: int = 60
 _QUALITY_THRESHOLD_DEFAULT: int = 65
 """Default minimum quality score (0-100) for a passing draft."""
 
-# ── Banned phrase patterns ─────────────────────────────────────────────────────
+# ── Banned phrase patterns & AI markers are imported from utils.anti_ai ────────
 
-_BANNED_PHRASE_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bi hope this message finds you well\b", re.IGNORECASE),
-    re.compile(r"\bi came across your (project|listing|post)\b", re.IGNORECASE),
-    re.compile(r"\bi am writing to express (my|an) interest\b", re.IGNORECASE),
-    re.compile(r"\bi believe my skills would be a great fit\b", re.IGNORECASE),
-    re.compile(r"\bi look forward to the possibility\b", re.IGNORECASE),
-    re.compile(r"\bplease let me know if you have any questions\b", re.IGNORECASE),
-    re.compile(r"\bi am confident (that )?i can deliver\b", re.IGNORECASE),
-    re.compile(r"\bthank you for considering (my|the)\b", re.IGNORECASE),
-    re.compile(r"\b(best|kind|warm) regards\b", re.IGNORECASE),
-    re.compile(r"\bi would love to (join|be a part of)\b", re.IGNORECASE),
-    re.compile(r"\bi am excited about (the|this) opportunity\b", re.IGNORECASE),
-    re.compile(r"\bi have reviewed your requirements\b", re.IGNORECASE),
-    re.compile(r"\bas per your (requirements|request|needs)\b", re.IGNORECASE),
-    re.compile(r"\bfeel free to (reach out|contact me)\b", re.IGNORECASE),
-    re.compile(r"\bdon't hesitate to\b", re.IGNORECASE),
-    re.compile(r"\bi would be a great (asset|addition|fit)\b", re.IGNORECASE),
-    re.compile(r"\b(i'm|i am) writing to apply\b", re.IGNORECASE),
-    re.compile(r"\blooking forward to hearing from you\b", re.IGNORECASE),
-]
-
-_AI_MARKER_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\b(as an AI|as a language model|as an LLM)\b", re.IGNORECASE),
-    re.compile(r"\bI cannot\b(?=.*\b(AI|language model|assistant)\b)", re.IGNORECASE),
-    re.compile(r"\bmy knowledge cutoff\b", re.IGNORECASE),
-    re.compile(r"\bI don't have (access to|personal|emotions)\b", re.IGNORECASE),
-    re.compile(r"\bI'm (just|only) an AI\b", re.IGNORECASE),
-    re.compile(r"\bI was trained (by|on|using)\b", re.IGNORECASE),
-]
 
 # ── Verification Result ────────────────────────────────────────────────────────
 
@@ -272,6 +249,9 @@ class VerificationAgent:
         opportunity: LeadOpportunity,
         *,
         max_attempts: int = 3,
+        regenerate_fn: (
+            Callable[[LeadOpportunity, list[str]], Awaitable[OutboundDraft]] | None
+        ) = None,
     ) -> tuple[OutboundDraft, VerificationResult]:
         """Verify a draft and regenerate if it does not meet quality standards.
 
@@ -283,6 +263,12 @@ class VerificationAgent:
             The related opportunity (for context in regeneration).
         max_attempts : int
             Maximum number of regeneration attempts (default 3).
+        regenerate_fn : callable or None
+            Optional async callback ``(opportunity, issues) -> new_draft``.
+            When provided, the agent calls this function to regenerate the
+            draft when verification fails, then re-verifies.  When ``None``
+            (default), the method returns the failed result immediately
+            without attempting regeneration.
 
         Returns
         -------
@@ -306,11 +292,22 @@ class VerificationAgent:
                 issues=result.issues,
             )
 
-            # We cannot regenerate here directly since that is the
-            # PersonalizationAgent's job.  Instead we note the issues
-            # and return the failed result so the orchestrator can
-            # decide how to handle it.
-            break
+            if regenerate_fn is None:
+                # No way to regenerate — return the failed result so the
+                # orchestrator can decide how to handle it.
+                break
+
+            try:
+                new_draft = await regenerate_fn(opportunity, result.issues)
+                current_draft = new_draft
+                result = await self.verify(current_draft, opportunity)
+            except Exception as exc:
+                logger.warning(
+                    "verification.regeneration_failed",
+                    attempt=attempt,
+                    error=str(exc),
+                )
+                break
 
         return current_draft, result
 

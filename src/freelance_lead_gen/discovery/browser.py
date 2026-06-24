@@ -14,7 +14,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 import structlog
 from playwright.async_api import (
@@ -123,6 +123,34 @@ class ManagedBrowser:
 
     """
 
+    _DEFAULT_LAUNCH_ARGS: ClassVar[list[str]] = [
+        "--disable-blink-features=AutomationControlled",
+    ]
+
+    # Unsafe launch args — only add when explicitly opted in.
+    _UNSAFE_LAUNCH_ARGS: ClassVar[list[str]] = [
+        "--no-sandbox",
+        "--disable-web-security",
+    ]
+    """Chromium launch arguments that reduce security.
+
+    These are **not** included in the default launch_args because they
+    disable important browser security features.  Pass them explicitly
+    via *launch_args* when needed (e.g. CI environments without sandbox
+    support).
+    """
+
+    @staticmethod
+    def _log_unsafe_warning(args: list[str]) -> None:
+        """Emit a warning if any unsafe launch arguments are present."""
+        unsafe_found = [a for a in args if a in ManagedBrowser._UNSAFE_LAUNCH_ARGS]
+        if unsafe_found:
+            logger.warning(
+                "browser.unsafe_args_enabled",
+                args=unsafe_found,
+                hint="Only use these in controlled environments (CI, dev).",
+            )
+
     def __init__(
         self,
         *,
@@ -142,6 +170,7 @@ class ManagedBrowser:
         self._jitter_sigma = jitter_sigma
         self._explicit_viewport = viewport
         self._launch_args = launch_args or []
+        self._log_unsafe_warning(self._launch_args)
 
         # Runtime state — set when started.
         self._playwright: Playwright | None = None
@@ -224,9 +253,7 @@ class ManagedBrowser:
             "headless": self._headless,
             "args": [
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-web-security",
                 "--disable-features=IsolateOrigins,site-per-process",
                 *self._launch_args,
             ],
@@ -249,7 +276,7 @@ class ManagedBrowser:
         context_options: dict[str, Any] = {
             **fp_kwargs,
             "base_url": "",
-            "ignore_https_errors": True,
+            "ignore_https_errors": False,
             "no_viewport": False,
         }
 

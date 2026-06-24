@@ -245,9 +245,15 @@ class RemoteOKExtractor(BasePlatformExtractor):
             logger.exception("remote_ok.browser_fallback_failed", error=str(exc))
             return []
 
-    async def __del__(self) -> None:
+    async def close(self) -> None:
+        """Close the HTTP client, releasing network resources.
+
+        Call during shutdown to avoid unclosed client warnings.
+        Safe to call multiple times.
+        """
         if self._http_client is not None:
             await self._http_client.aclose()
+            self._http_client = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -466,9 +472,15 @@ class YCWorkExtractor(BasePlatformExtractor):
             logger.exception("yc_work.browser_fallback_failed", error=str(exc))
             return []
 
-    async def __del__(self) -> None:
+    async def close(self) -> None:
+        """Close the HTTP client, releasing network resources.
+
+        Call during shutdown to avoid unclosed client warnings.
+        Safe to call multiple times.
+        """
         if self._http_client is not None:
             await self._http_client.aclose()
+            self._http_client = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
