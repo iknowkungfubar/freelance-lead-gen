@@ -52,14 +52,16 @@ def _safe_error(msg: str, exc: Exception) -> None:
     click.echo("An unexpected error occurred.  Please check the logs for details.", err=True)
 
 
-def _validate_settings() -> list[str]:
+def _validate_settings(*, require_llm_key: bool = True) -> list[str]:
     """Run pre-flight checks on the current settings and return a list of
     validation errors (empty if everything is OK).
 
-    Checks:
-    - ``LLM_API_KEY`` is set and non-empty.
-    - ``DATABASE_PATH`` points to a writable location.
-    - At least one search query is configured.
+    Parameters
+    ----------
+    require_llm_key : bool
+        If *True* (default), require ``LLM_API_KEY`` to be set.  Pass
+        *False* for commands like ``init`` that only need the database.
+
     """
     from pathlib import Path
 
@@ -73,13 +75,14 @@ def _validate_settings() -> list[str]:
         errors.append(f"Failed to load settings: {exc}")
         return errors
 
-    # LLM_API_KEY
-    key = settings.llm.api_key
-    if not key or key == "***":
-        errors.append(
-            "LLM_API_KEY is not set.  Set it in your .env file or environment "
-            "and ensure it is a valid API key."
-        )
+    # LLM_API_KEY — only required for commands that call the LLM.
+    if require_llm_key:
+        key = settings.llm.api_key
+        if not key or key == "***":
+            errors.append(
+                "LLM_API_KEY is not set.  Set it in your .env file or environment "
+                "and ensure it is a valid API key."
+            )
 
     # DATABASE_PATH writable
     db_path = settings.database.database_url
@@ -187,8 +190,8 @@ def init() -> None:
     Runs the database migration to create all required tables.  Safe to run
     multiple times — migrations are idempotent.
     """
-    # Pre-flight config validation.
-    validation_errors = _validate_settings()
+    # Pre-flight config validation (DB only — LLM key not needed for init).
+    validation_errors = _validate_settings(require_llm_key=False)
     if validation_errors:
         for err in validation_errors:
             click.echo(f"  [ERROR] {err}", err=True)
