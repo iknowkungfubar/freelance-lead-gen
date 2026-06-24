@@ -299,9 +299,9 @@ class ManagedBrowser:
         # ── Stealth & anti-detection ───────────────────────────────────
         # Apply playwright-stealth patches (optional dependency).
         try:
-            from playwright_stealth import stealth  # type: ignore[import-untyped]
+            from playwright_stealth import Stealth  # type: ignore[import-untyped]
 
-            await stealth(self._page)
+            await Stealth().apply_stealth_async(self._page)
             logger.info("browser.stealth_applied")
         except ImportError:
             logger.warning("browser.stealth_not_available", detail="playwright-stealth package not installed")
