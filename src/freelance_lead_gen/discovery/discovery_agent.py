@@ -297,29 +297,61 @@ class DiscoveryAgent:
             queries=queries,
         )
 
-        for platform_name in shuffled:
-            extractor = self._platform_extractors.get(platform_name)
+        semaphore = asyncio.Semaphore(3)
+
+        async def _run_one(p_name: str) -> dict[str, Any] | None:
+            """Extract for a single platform (wrapped for parallel dispatch)."""
+            extractor = self._platform_extractors.get(p_name)
             if extractor is None:
                 logger.warning(
                     "discovery_agent.skipping_platform_no_extractor",
-                    platform=platform_name,
+                    platform=p_name,
                 )
-                continue
+                return None
+
+            async with semaphore:
+                try:
+                    platform_result = await self._run_platform_extraction(
+                        platform_name=p_name,
+                        extractor=extractor,
+                        queries=queries,
+                    )
+                    return {
+                        "platform": p_name,
+                        "success": True,
+                        "result": platform_result,
+                        "error": None,
+                    }
+                except Exception as exc:
+                    logger.error(
+                        "discovery_agent.platform_failed",
+                        platform=p_name,
+                        error=str(exc),
+                        exc_info=True,
+                    )
+                    return {
+                        "platform": p_name,
+                        "success": False,
+                        "result": None,
+                        "error": exc,
+                    }
+
+        outcomes = await asyncio.gather(*[_run_one(p) for p in shuffled])
+
+        for outcome in outcomes:
+            if outcome is None:
+                continue  # No extractor registered — not counted as attempted.
 
             report.platforms_attempted += 1
+            p_name = outcome["platform"]
 
-            try:
-                platform_result = await self._run_platform_extraction(
-                    platform_name=platform_name,
-                    extractor=extractor,
-                    queries=queries,
-                )
-
+            if outcome["success"]:
+                platform_result = outcome["result"]
                 report.total_found += platform_result["found"]
                 report.total_new += platform_result["new"]
                 report.platforms_succeeded += 1
 
-                report.per_platform[platform_name] = {
+                report.per_platform[p_name] = {
                     "found": platform_result["found"],
                     "new": platform_result["new"],
                     "failed": platform_result.get("failed", 0),
@@ -328,32 +360,24 @@ class DiscoveryAgent:
 
                 logger.info(
                     "discovery_agent.platform_completed",
-                    platform=platform_name,
+                    platform=p_name,
                     found=platform_result["found"],
                     new=platform_result["new"],
                 )
-
-            except Exception as exc:
+            else:
+                exc = outcome["error"]
                 report.total_errors += 1
                 report.errors.append({
-                    "platform": platform_name,
+                    "platform": p_name,
                     "error": str(exc),
                 })
 
-                report.per_platform[platform_name] = {
+                report.per_platform[p_name] = {
                     "found": 0,
                     "new": 0,
                     "failed": 1,
                     "error": str(exc),
                 }
-
-                logger.error(
-                    "discovery_agent.platform_failed",
-                    platform=platform_name,
-                    error=str(exc),
-                    exc_info=True,
-                )
-                # Continue to next platform — graceful degradation.
 
         # Update lifetime stats.
         self._stats["cycles"] += 1

@@ -26,7 +26,7 @@ from freelance_lead_gen.agents.orchestrator import LeadGenOrchestrator
 from freelance_lead_gen.config.settings import get_settings
 from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
 from freelance_lead_gen.models.opportunity import LeadStatus
-from freelance_lead_gen.storage.database import init_db
+from freelance_lead_gen.storage.database import close_db, init_db
 from freelance_lead_gen.storage.migrations import apply_migrations
 from freelance_lead_gen.storage.repository import DatabaseError, OpportunityRepository
 
@@ -476,6 +476,104 @@ async def _do_stats() -> None:
     for pname, pcount in sorted(platform_counts.items()):
         click.echo(f"    {pname}: {pcount}")
     click.echo(f"{'='*40}\n")
+
+
+# ── health ────────────────────────────────────────────────────
+
+
+@main.command()
+def health() -> None:
+    """Show system health status.
+
+    Reports on database connectivity, LLM configuration validity, and
+    per-platform scheduler status (if the scheduler is running).  Uses
+    Rich for formatted terminal output.
+    """
+    try:
+        asyncio.run(_do_health())
+    except Exception as exc:
+        _safe_error("Health check failed", exc)
+        sys.exit(1)
+
+
+async def _do_health() -> None:
+    """Async implementation of the health command.
+
+    Checks performed in order:
+
+    1. **LLM configuration** — API key presence and base URL format.
+    2. **LLM endpoint** — TCP reachability of the configured API host.
+    3. **Database** — engine initialisation and connection verification.
+    4. **Scheduler** — advisory note (the scheduler is only active in
+       ``serve`` mode).
+
+    Each check is independent so partial failure in one does not prevent
+    the remaining checks from running.
+    """
+    from urllib.parse import urlparse
+
+    console.print("[bold]System Health Check[/bold]\n")
+
+    # ── 1. LLM configuration ────────────────────────────────────────────
+    errors = _validate_settings()
+    if errors:
+        console.print("[red]✗[/red] LLM Configuration: [red]INVALID[/red]")
+        for err in errors:
+            console.print(f"    {err}")
+    else:
+        console.print("[green]✓[/green] LLM Configuration: [green]OK[/green]")
+
+    # ── 2. LLM endpoint reachability (lightweight TCP check) ────────────
+    settings = get_settings()
+    base_url = settings.llm.base_url
+    try:
+        parsed = urlparse(base_url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if host:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=5.0,
+            )
+            writer.close()
+            await writer.wait_closed()
+            console.print(
+                f"[green]✓[/green] LLM Endpoint: [green]reachable[/green] "
+                f"({host}:{port})"
+            )
+        else:
+            console.print(
+                "[yellow]~[/yellow] LLM Endpoint: [yellow]skipped[/yellow] "
+                "(could not parse host from base_url)"
+            )
+    except OSError as exc:
+        console.print(
+            f"[red]✗[/red] LLM Endpoint: [red]unreachable[/red] "
+            f"({base_url}): {exc}"
+        )
+    except TimeoutError:
+        console.print(
+            f"[red]✗[/red] LLM Endpoint: [red]timeout[/red] "
+            f"({base_url}) — host did not respond within 5 s"
+        )
+
+    # ── 3. Database connectivity ────────────────────────────────────────
+    try:
+        await init_db()
+        await close_db()
+        console.print("[green]✓[/green] Database: [green]OK[/green]")
+    except Exception as exc:
+        console.print(
+            f"[red]✗[/red] Database: [red]FAILED[/red] — {exc}"
+        )
+
+    # ── 4. Scheduler status ─────────────────────────────────────────────
+    console.print(
+        "\n[bold]Scheduler:[/bold] Not running "
+        "(use [italic]serve[/italic] to start the scheduler)"
+    )
+
+    console.print("\n[bold green]Health check complete.[/bold green]")
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────

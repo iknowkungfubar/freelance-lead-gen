@@ -189,6 +189,47 @@ class DiscoveryScheduler:
             },
         }
 
+    @property
+    def health_status(self) -> dict[str, Any]:
+        """Return health metrics snapshot for monitoring / heartbeats.
+
+        Returns
+        -------
+        dict
+            Includes: running, total_cycles, total_leads, total_errors,
+            per_platform breakdown, consecutive_failures, auto_disabled
+            platforms, and last_cycle_at timestamp.
+
+        """
+        return {
+            "running": self._running,
+            "total_cycles": self._stats.total_runs,
+            "total_leads": self._stats.total_leads,
+            "total_errors": self._stats.total_failures,
+            "per_platform": {
+                name: {
+                    "enabled": ps.enabled,
+                    "last_run": ps.last_run.isoformat() if ps.last_run else None,
+                    "total_found": ps.total_found,
+                    "consecutive_failures": ps.consecutive_failures,
+                }
+                for name, ps in self._platforms.items()
+            },
+            "consecutive_failures": {
+                name: ps.consecutive_failures
+                for name, ps in self._platforms.items()
+            },
+            "auto_disabled": [
+                name
+                for name, ps in self._platforms.items()
+                if not ps.enabled
+            ],
+            "last_cycle_at": max(
+                (ps.last_run for ps in self._platforms.values() if ps.last_run),
+                default=None,
+            ),
+        }
+
     # ── Lifecycle ───────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -475,6 +516,9 @@ class DiscoveryScheduler:
                         failures=schedule.consecutive_failures,
                     )
                     self.disable_platform(platform_name)
+
+            # Heartbeat — log health snapshot after every cycle attempt.
+            logger.info("scheduler.cycle_complete", **self.health_status)
 
     # ── Helpers ─────────────────────────────────────────────────────────
 

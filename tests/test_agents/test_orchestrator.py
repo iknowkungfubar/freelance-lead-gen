@@ -90,9 +90,9 @@ def mock_all_agents() -> dict:
 class TestOrchestratorInit:
     """Tests for LeadGenOrchestrator initialisation."""
 
-    def test_create_with_defaults(self) -> None:
+    def test_create_with_defaults(self, test_settings) -> None:  # noqa: ANN001
         """Verify the orchestrator can be created with default dependencies."""
-        orchestrator = LeadGenOrchestrator()
+        orchestrator = LeadGenOrchestrator(settings=test_settings)
         assert orchestrator.is_running is False
         assert orchestrator.shutdown_requested is False
         assert orchestrator.stats["runs"] == 0
@@ -268,3 +268,102 @@ class TestOrchestratorShutdown:
 
         with pytest.raises(RuntimeError, match="already running"):
             await orchestrator.run_full_pipeline(run_discovery=False)
+
+
+class TestOrchestratorErrorRecovery:
+    """Tests for graceful error recovery during pipeline execution."""
+
+    @pytest.mark.asyncio
+    async def test_filtering_failure_best_effort(
+        self,
+        mock_all_agents: dict,
+        sample_qualified_opps: list[LeadOpportunity],
+    ) -> None:
+        """Verify the orchestrator degrades gracefully when filtering fails.
+
+        The filtering phase catches exceptions and returns all opportunities
+        as a best-effort measure.  The pipeline should continue and report
+        the partial failure rather than aborting.
+        """
+        mock_all_agents["filtering"].run.side_effect = Exception("Filtering failed")
+
+        def _make_draft(opp: LeadOpportunity, *args, **kwargs) -> OutboundDraft:
+            draft = OutboundDraft(opportunity_id=opp.id)
+            draft.add_version(f"Draft for {opp.title}")
+            return draft
+
+        mock_all_agents["personalization"].generate_draft.side_effect = _make_draft
+
+        orchestrator = LeadGenOrchestrator(
+            discovery_agent=mock_all_agents["discovery"],
+            filtering_pipeline=mock_all_agents["filtering"],
+            personalization_agent=mock_all_agents["personalization"],
+            verification_agent=mock_all_agents["verification"],
+            repository=mock_all_agents["repository"],
+            llm_client=mock_all_agents["llm"],
+        )
+
+        report = await orchestrator.run_full_pipeline(
+            opportunities=sample_qualified_opps,
+        )
+
+        assert report.success is True
+        assert "filtering" in report.phases_failed
+        assert report.total_discovered >= 0
+
+    @pytest.mark.asyncio
+    async def test_personalization_partial_failure(
+        self,
+        mock_all_agents: dict,
+        sample_qualified_opps: list[LeadOpportunity],
+    ) -> None:
+        """Verify partial results are returned when personalization fails for
+        some opportunities.
+
+        The personalisation phase iterates over qualified opportunities and
+        catches individual failures so that remaining opportunities are still
+        processed.  The report should reflect both partial success and errors.
+        """
+        _call_count: list[int] = [0]
+
+        async def _personalize_side_effect(
+            opp: LeadOpportunity, *args, **kwargs
+        ) -> OutboundDraft:
+            _call_count[0] += 1
+            if _call_count[0] == 1:
+                draft = OutboundDraft(opportunity_id=opp.id)
+                draft.add_version(f"Draft for {opp.title}")
+                return draft
+            msg = "Personalization failed"
+            raise RuntimeError(msg)
+
+        mock_all_agents["personalization"].generate_draft.side_effect = (
+            _personalize_side_effect
+        )
+        mock_all_agents["repository"].search.return_value = sample_qualified_opps
+        mock_all_agents["filtering"].run.return_value = (
+            sample_qualified_opps,
+            FilteringReport(
+                total_input=2,
+                high_count=1,
+                potential_count=1,
+                low_count=0,
+                errors=0,
+            ),
+        )
+
+        orchestrator = LeadGenOrchestrator(
+            discovery_agent=mock_all_agents["discovery"],
+            filtering_pipeline=mock_all_agents["filtering"],
+            personalization_agent=mock_all_agents["personalization"],
+            verification_agent=mock_all_agents["verification"],
+            repository=mock_all_agents["repository"],
+            llm_client=mock_all_agents["llm"],
+        )
+
+        report = await orchestrator.run_full_pipeline(
+            opportunities=sample_qualified_opps,
+        )
+
+        assert report.total_drafted == 1
+        assert report.total_errors > 0

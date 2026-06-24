@@ -9,16 +9,12 @@ from __future__ import annotations as _annotations
 
 from freelance_lead_gen.discovery.browser import ManagedBrowser
 from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
-from freelance_lead_gen.discovery.extractor import (
-    GenericPlaywrightExtractor,
-    RawLead,
-)
+from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.scheduler import DiscoveryScheduler
 
 __all__ = [
     "DiscoveryAgent",
     "DiscoveryScheduler",
-    "GenericPlaywrightExtractor",
     "ManagedBrowser",
     "RawLead",
 ]
