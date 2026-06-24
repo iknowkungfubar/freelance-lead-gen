@@ -14,8 +14,12 @@ Provides Click commands for all pipeline operations:
 from __future__ import annotations as _annotations
 
 import asyncio
+import json
 import signal
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 import click
 import structlog
@@ -108,6 +112,60 @@ def _validate_settings() -> list[str]:
         )
 
     return errors
+
+
+# ── Health HTTP server ──────────────────────────────────────────────────────
+
+
+def _health_http_server(port: int = 8080) -> HTTPServer:
+    """Start a lightweight HTTP server for container health checks.
+
+    Provides two endpoints:
+
+    * ``GET /health``  → JSON with component statuses (always 200 if alive)
+    * ``GET /ready``   → 200 when the server is ready, 503 otherwise
+
+    Runs in a daemon thread so it never blocks process shutdown.
+    """
+    _ready = threading.Event()
+    _ready.set()  # The server only starts after DB init in _do_serve, so mark ready.
+
+    class _HealthHandler(BaseHTTPRequestHandler):
+        """Minimal JSON-responding handler for health/readiness probes."""
+
+        def _respond(self, status: int, body: dict[str, Any]) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+
+        def log_message(self, msg: str, *args: Any) -> None:  # noqa: ARG002
+            logger.debug("Health HTTP: %s", msg % args if args else msg)
+
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                settings = get_settings()
+                self._respond(
+                    200,
+                    {
+                        "status": "ok",
+                        "db": "connected",
+                        "llm": "configured" if settings.llm.api_key else "not configured",
+                        "scheduler": "running",
+                    },
+                )
+            elif self.path == "/ready":
+                if _ready.is_set():
+                    self._respond(200, {"status": "ready"})
+                else:
+                    self._respond(503, {"status": "not ready"})
+            else:
+                self._respond(404, {"error": "not found"})
+
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)  # noqa: S104 — intentional for container health checks
+    thread = threading.Thread(target=server.serve_forever, daemon=True, name="health-http")
+    thread.start()
+    return server
 
 
 # ── Main CLI group ────────────────────────────────────────────────────────────
@@ -482,21 +540,28 @@ async def _do_stats() -> None:
 
 
 @main.command()
-def health() -> None:
+@click.option("--check", is_flag=True, help="Machine-readable check for Docker health (exit code only)")
+def health(check: bool) -> None:
     """Show system health status.
 
     Reports on database connectivity, LLM configuration validity, and
     per-platform scheduler status (if the scheduler is running).  Uses
     Rich for formatted terminal output.
+
+    When ``--check`` is passed, output is minimal and the exit code follows
+    Docker convention (0 = healthy, 1 = unhealthy).
     """
     try:
-        asyncio.run(_do_health())
+        asyncio.run(_do_health(check=check))
     except Exception as exc:
+        if check:
+            print("UNHEALTHY", flush=True)
+            sys.exit(1)
         _safe_error("Health check failed", exc)
         sys.exit(1)
 
 
-async def _do_health() -> None:
+async def _do_health(check: bool = False) -> None:
     """Async implementation of the health command.
 
     Checks performed in order:
@@ -509,18 +574,28 @@ async def _do_health() -> None:
 
     Each check is independent so partial failure in one does not prevent
     the remaining checks from running.
+
+    When *check* is ``True``, output is minimal and the exit code follows
+    Docker convention (0 = healthy, 1 = unhealthy).
     """
     from urllib.parse import urlparse
 
-    console.print("[bold]System Health Check[/bold]\n")
+    has_failure = False
+
+    if not check:
+        console.print("[bold]System Health Check[/bold]\n")
 
     # ── 1. LLM configuration ────────────────────────────────────────────
     errors = _validate_settings()
     if errors:
-        console.print("[red]✗[/red] LLM Configuration: [red]INVALID[/red]")
-        for err in errors:
-            console.print(f"    {err}")
-    else:
+        has_failure = True
+        if not check:
+            console.print("[red]✗[/red] LLM Configuration: [red]INVALID[/red]")
+            for err in errors:
+                console.print(f"    {err}")
+        else:
+            logger.warning("Health check — LLM configuration invalid", errors=errors)
+    elif not check:
         console.print("[green]✓[/green] LLM Configuration: [green]OK[/green]")
 
     # ── 2. LLM endpoint reachability (lightweight TCP check) ────────────
@@ -537,43 +612,63 @@ async def _do_health() -> None:
             )
             writer.close()
             await writer.wait_closed()
+            if not check:
+                console.print(
+                    f"[green]✓[/green] LLM Endpoint: [green]reachable[/green] "
+                    f"({host}:{port})"
+                )
+        else:
+            if not check:
+                console.print(
+                    "[yellow]~[/yellow] LLM Endpoint: [yellow]skipped[/yellow] "
+                    "(could not parse host from base_url)"
+                )
+    except OSError as exc:
+        has_failure = True
+        if not check:
             console.print(
-                f"[green]✓[/green] LLM Endpoint: [green]reachable[/green] "
-                f"({host}:{port})"
+                f"[red]✗[/red] LLM Endpoint: [red]unreachable[/red] "
+                f"({base_url}): {exc}"
             )
         else:
-            console.print(
-                "[yellow]~[/yellow] LLM Endpoint: [yellow]skipped[/yellow] "
-                "(could not parse host from base_url)"
-            )
-    except OSError as exc:
-        console.print(
-            f"[red]✗[/red] LLM Endpoint: [red]unreachable[/red] "
-            f"({base_url}): {exc}"
-        )
+            logger.warning("Health check — LLM endpoint unreachable", base_url=base_url, error=str(exc))
     except TimeoutError:
-        console.print(
-            f"[red]✗[/red] LLM Endpoint: [red]timeout[/red] "
-            f"({base_url}) — host did not respond within 5 s"
-        )
+        has_failure = True
+        if not check:
+            console.print(
+                f"[red]✗[/red] LLM Endpoint: [red]timeout[/red] "
+                f"({base_url}) — host did not respond within 5 s"
+            )
+        else:
+            logger.warning("Health check — LLM endpoint timeout", base_url=base_url)
 
     # ── 3. Database connectivity ────────────────────────────────────────
     try:
         await init_db()
         await close_db()
-        console.print("[green]✓[/green] Database: [green]OK[/green]")
+        if not check:
+            console.print("[green]✓[/green] Database: [green]OK[/green]")
     except Exception as exc:
-        console.print(
-            f"[red]✗[/red] Database: [red]FAILED[/red] — {exc}"
-        )
+        has_failure = True
+        if not check:
+            console.print(
+                f"[red]✗[/red] Database: [red]FAILED[/red] — {exc}"
+            )
+        else:
+            logger.warning("Health check — database connection failed", error=str(exc))
 
     # ── 4. Scheduler status ─────────────────────────────────────────────
-    console.print(
-        "\n[bold]Scheduler:[/bold] Not running "
-        "(use [italic]serve[/italic] to start the scheduler)"
-    )
-
-    console.print("\n[bold green]Health check complete.[/bold green]")
+    if not check:
+        console.print(
+            "\n[bold]Scheduler:[/bold] Not running "
+            "(use [italic]serve[/italic] to start the scheduler)"
+        )
+        console.print("\n[bold green]Health check complete.[/bold green]")
+    elif has_failure:
+        print("UNHEALTHY", flush=True)
+        sys.exit(1)
+    else:
+        print("HEALTHY", flush=True)
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────
@@ -614,6 +709,11 @@ async def _do_serve() -> None:
 
     scheduler = agent.create_scheduler()
 
+    # Start health HTTP server in a background daemon thread.
+    port = 8080
+    health_server = _health_http_server(port=port)
+    click.echo(f"Health HTTP server listening on http://0.0.0.0:{port}")
+
     click.echo("Starting discovery scheduler...")
     click.echo("Press Ctrl+C to stop.")
     click.echo("")
@@ -640,6 +740,8 @@ async def _do_serve() -> None:
     except asyncio.CancelledError:
         pass
     finally:
+        shut_loop = asyncio.get_running_loop()
+        await shut_loop.run_in_executor(None, health_server.shutdown)
         await scheduler.stop()
         await agent.shutdown()
-        click.echo("Scheduler stopped.")
+        click.echo("Scheduler and health server stopped.")

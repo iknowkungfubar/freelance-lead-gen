@@ -1,0 +1,15 @@
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+.venv/
+.hermes/
+*.md
+tests/
+docs/
+browser_data/
+data/leads.db*
+*.sqlite
+.env

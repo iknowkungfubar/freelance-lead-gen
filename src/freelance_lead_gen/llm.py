@@ -20,11 +20,11 @@ import httpx
 import structlog
 from openai import (
     APIError,
+    APITimeoutError,
     AsyncOpenAI,
     AuthenticationError,
     InternalServerError,
     RateLimitError,
-    Timeout,
 )
 from pydantic import BaseModel
 
@@ -509,7 +509,7 @@ class LLMClient:
                     original=exc,
                 ) from exc
 
-            except Timeout as exc:
+            except APITimeoutError as exc:
                 self._stats["total_errors"] += 1
                 self._stats["total_retries"] += 1
                 last_error = exc
@@ -643,7 +643,7 @@ class LLMClient:
                     original=exc,
                 ) from exc
 
-            except Timeout as exc:
+            except APITimeoutError as exc:
                 self._stats["total_errors"] += 1
                 self._stats["total_retries"] += 1
                 last_error = exc

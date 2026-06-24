@@ -1,0 +1,20 @@
+services:
+  freelance-lead-gen:
+    build: .
+    container_name: freelance-lead-gen
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./browser_data:/app/browser_data
+      - ./.env:/app/.env:ro
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "freelance_lead_gen", "health", "--check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
