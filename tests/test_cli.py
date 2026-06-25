@@ -14,7 +14,7 @@ def test_cli_help() -> None:
     assert result.exit_code == 0
     assert "Usage:" in result.output
     # All expected command names must appear in the help output.
-    for cmd in ("init", "discover", "pipeline", "review", "list", "stats", "serve"):
+    for cmd in ("init", "discover", "pipeline", "review", "list", "stats", "quickstart", "serve"):
         assert cmd in result.output, f"Command {cmd!r} missing from help"
 
 

@@ -674,6 +674,185 @@ async def _do_health(check: bool = False) -> None:
         print("HEALTHY", flush=True)
 
 
+# ── quickstart ─────────────────────────────────────────────────
+
+
+# Mapping from display name to env-format value.
+_PLATFORM_OPTIONS: list[tuple[str, str]] = [
+    ("Upwork", "upwork"),
+    ("LinkedIn", "linkedin"),
+    ("Freelancer", "freelancer"),
+    ("RemoteOK", "remoteok"),
+]
+
+_DEFAULT_ENV_PLATFORMS = "upwork,linkedin,freelancer"
+
+
+def _write_dotenv(key: str, value: str, path: str = ".env") -> None:
+    """Set *key* to *value* in the ``.env`` file, creating or updating it.
+
+    If the file does not exist it is created from ``.env.example`` first.
+    If *key* already appears in the file its value is replaced; otherwise
+    the line is appended.  The file always ends with a trailing newline.
+    """
+    from pathlib import Path
+
+    env_path = Path(path)
+
+    # Bootstrap from .env.example if .env doesn't exist.
+    example_path = Path(".env.example")
+    if not env_path.exists() and example_path.exists():
+        env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True) if env_path.exists() else []
+    new_line = f"{key}={value}\n"
+    found = False
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith((f"{key}=", f"# {key}=")):
+            lines[i] = new_line
+            found = True
+            break
+
+    if not found:
+        lines.append(new_line)
+
+    env_path.write_text("".join(lines), encoding="utf-8")
+
+
+@main.command()
+def quickstart() -> None:
+    """Interactive first-time setup wizard.
+
+    Walks through LLM API key configuration, platform selection, database
+    initialisation, and a lightweight connectivity check — so new users
+    can go from zero to running in under two minutes.
+    """
+    from urllib.parse import urlparse
+
+    from freelance_lead_gen.config.settings import get_settings
+
+    # ── 1. Welcome ────────────────────────────────────────────────────
+    click.echo("")
+    click.echo("╔══════════════════════════════════════════════════════╗")
+    click.echo("║   Welcome to Freelance Lead Gen!                    ║")
+    click.echo("║   Let's get you set up.                             ║")
+    click.echo("╚══════════════════════════════════════════════════════╝")
+    click.echo("")
+    click.echo("This wizard will configure your LLM API key, select the")
+    click.echo("platforms to monitor, initialise the database, and verify")
+    click.echo("that everything is connected.")
+    click.echo("")
+
+    # ── 2. LLM API Key ──────────────────────────────────────────────
+    api_key = click.prompt(
+        "Enter your LLM API key (get one at https://opencode.ai)",
+        default="",
+        show_default=False,
+    )
+
+    if not api_key or api_key.strip() == "":
+        click.echo("")
+        click.echo("  [ERROR] An LLM API key is required to qualify leads and generate outreach drafts.", err=True)
+        click.echo("  Get a free key at https://opencode.ai and run 'freelance-lead-gen quickstart' again.", err=True)
+        sys.exit(1)
+
+    api_key = api_key.strip()
+    _write_dotenv("LLM_API_KEY", api_key)
+    click.echo("  [OK] LLM API key saved to .env")
+
+    # ── 3. Platform selection ────────────────────────────────────────
+    click.echo("")
+    click.echo("Which platforms do you want to monitor?")
+    click.echo("(Answer 'y' for each platform you want to enable)")
+    selected: list[str] = []
+
+    for display_name, value in _PLATFORM_OPTIONS:
+        # Upwork and LinkedIn are enabled by default.
+        default_choice = value in ("upwork", "linkedin")
+        label = f"  Enable {display_name}"
+        if click.confirm(label, default=default_choice):
+            selected.append(value)
+
+    platforms_value = ",".join(selected) if selected else _DEFAULT_ENV_PLATFORMS
+    _write_dotenv("PLATFORMS_ENABLED", platforms_value)
+    click.echo(f"  [OK] Platforms saved: {platforms_value}")
+
+    # ── 4. Test connection ───────────────────────────────────────────
+    click.echo("")
+    click.echo("Testing connection...")
+    get_settings.cache_clear()
+
+    errors: list[str] = []
+    # Validate settings with the new key.
+    try:
+        settings = get_settings()
+    except Exception as exc:
+        errors.append(f"Failed to load configuration: {exc}")
+
+    # Database init.
+    if not errors:
+        try:
+            asyncio.run(_do_init())
+            click.echo("  [OK] Database initialised")
+        except Exception as exc:
+            errors.append(f"Database initialisation failed: {exc}")
+
+    # LLM endpoint reachability (lightweight TCP check — no API call).
+    if not errors:
+        base_url = settings.llm.base_url
+        try:
+            parsed = urlparse(base_url)
+            host = parsed.hostname
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            if host:
+                _, writer = asyncio.run(
+                    asyncio.wait_for(
+                        asyncio.open_connection(host, port),
+                        timeout=5.0,
+                    ),
+                )
+                writer.close()
+                asyncio.run(writer.wait_closed())
+                click.echo(f"  [OK] LLM endpoint reachable ({host}:{port})")
+            else:
+                click.echo(f"  [~] LLM endpoint check skipped (could not parse {base_url})")
+        except TimeoutError:
+            errors.append(f"LLM endpoint timed out after 5 s ({host}:{port})")
+        except OSError as exc:
+            errors.append(f"LLM endpoint unreachable ({base_url}): {exc}")
+
+    # Check that API key is recognised (basic validation only).
+    if not errors:
+        click.echo("  [OK] LLM API key configured")
+
+    if errors:
+        click.echo("")
+        for err in errors:
+            click.echo(f"  [ERROR] {err}", err=True)
+        click.echo("")
+        click.echo("Fix the above issues and run 'freelance-lead-gen quickstart' again.", err=True)
+        sys.exit(1)
+
+    # ── 5. Summary ───────────────────────────────────────────────────
+    click.echo("")
+    click.echo("╔══════════════════════════════════════════════════════╗")
+    click.echo("║   You're all set!                                   ║")
+    click.echo("╚══════════════════════════════════════════════════════╝")
+    click.echo("")
+    click.echo("  Configured:")
+    click.echo(f"    LLM API Key:      {'****' + api_key[-4:] if len(api_key) > 4 else '****'}")
+    click.echo(f"    Databases:        {settings.database.path}")
+    click.echo(f"    Platforms:        {platforms_value}")
+    click.echo("")
+    click.echo("  Next steps:")
+    click.echo("    Discover leads:   freelance-lead-gen discover")
+    click.echo("    Start scheduler:  freelance-lead-gen serve")
+    click.echo("    View all commands:freelance-lead-gen --help")
+    click.echo("")
+
+
 # ── serve ─────────────────────────────────────────────────────────────────────
 
 

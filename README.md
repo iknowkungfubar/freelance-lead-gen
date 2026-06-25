@@ -10,6 +10,44 @@
 
 ---
 
+## Getting Started
+
+### 1. Get an API Key
+
+This system uses an LLM (AI) to qualify leads and generate outreach drafts.
+You need an API key from a supported provider:
+
+- **[OpenCode](https://opencode.ai)** (recommended) — $10 free credit, no subscription
+- **OpenAI** — standard API key
+- Any OpenAI-compatible provider
+
+### 2. One-Click Launch (Docker)
+
+```bash
+docker run -p 8080:8080 -e LLM_API_KEY=*** ghcr.io/iknowkungfubar/freelance-lead-gen
+```
+
+Then open http://localhost:8080 for health status.
+
+### 3. Quickstart Wizard (Python)
+
+```bash
+pip install freelance-lead-gen
+freelance-lead-gen quickstart
+```
+
+### 4. Manual Setup
+
+Copy `.env.example` to `.env`, fill in your API key, then:
+
+```bash
+freelance-lead-gen init
+freelance-lead-gen discover --dry-run
+freelance-lead-gen serve
+```
+
+---
+
 ## Features
 
 - **Multi-platform discovery** — automated scraping of Upwork, LinkedIn, Freelancer, and configurable job boards with platform-specific anti-bot profiles
@@ -76,6 +114,10 @@ graph LR
 ---
 
 ## Quick Start
+
+> **New user?** See the [Getting Started](#getting-started) section above for quick setup via Docker or the `quickstart` wizard.
+>
+> The instructions below are the full manual setup for development use.
 
 ```bash
 # Clone the repository
@@ -194,6 +236,7 @@ These are set via environment variables only (never hardcoded):
 | `review` | Open the terminal UI focused on the review queue for draft approval |
 | `list` | List opportunities with optional filters (status, platform, limit) |
 | `stats` | Show aggregate pipeline statistics and platform breakdown |
+| `quickstart` | Interactive first-time setup wizard — configure API key and platforms in under 2 minutes |
 | `serve` | Start the scheduler daemon for periodic discovery runs |
 
 ```bash
