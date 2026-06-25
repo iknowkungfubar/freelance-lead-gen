@@ -67,7 +67,8 @@ class RemoteOKExtractor(BasePlatformExtractor):
     ) -> None:
         super().__init__(
             browser,
-            rate_limit=rate_limit or RateLimitConfig(
+            rate_limit=rate_limit
+            or RateLimitConfig(
                 min_delay=2.0,
                 max_delay=5.0,
                 jitter_factor=0.3,
@@ -198,7 +199,9 @@ class RemoteOKExtractor(BasePlatformExtractor):
             return None, None
 
         amounts = re.findall(r"\$?(\d+)(?:k|K|,000)?", salary)
-        amounts = [float(a) * 1000 if "k" in salary.lower() or len(a) <= 6 else float(a) for a in amounts]
+        amounts = [
+            float(a) * 1000 if "k" in salary.lower() or len(a) <= 6 else float(a) for a in amounts
+        ]
 
         if not amounts:
             return None, None
@@ -230,13 +233,15 @@ class RemoteOKExtractor(BasePlatformExtractor):
                     company_el = await card.query_selector("span[itemprop='name'], span.company")
                     company = (await company_el.inner_text()).strip() if company_el else None
 
-                    leads.append(RawLead(
-                        platform="remote_ok",
-                        platform_job_id=_make_id(url or title),
-                        title=title[:500],
-                        company=company,
-                        url=url,
-                    ))
+                    leads.append(
+                        RawLead(
+                            platform="remote_ok",
+                            platform_job_id=_make_id(url or title),
+                            title=title[:500],
+                            company=company,
+                            url=url,
+                        )
+                    )
                 except Exception:
                     continue
 
@@ -279,7 +284,8 @@ class YCWorkExtractor(BasePlatformExtractor):
     ) -> None:
         super().__init__(
             browser,
-            rate_limit=rate_limit or RateLimitConfig(
+            rate_limit=rate_limit
+            or RateLimitConfig(
                 min_delay=2.0,
                 max_delay=4.0,
                 jitter_factor=0.3,
@@ -379,7 +385,11 @@ class YCWorkExtractor(BasePlatformExtractor):
         if not title:
             return None
 
-        company = job.get("company", {}).get("name", "") if isinstance(job.get("company"), dict) else job.get("company_name", "")
+        company = (
+            job.get("company", {}).get("name", "")
+            if isinstance(job.get("company"), dict)
+            else job.get("company_name", "")
+        )
         description = job.get("description", "") or job.get("descriptionHtml", "") or ""
         url = job.get("url") or f"https://www.workatastartup.com/jobs/{job.get('id', '')}"
 
@@ -409,7 +419,11 @@ class YCWorkExtractor(BasePlatformExtractor):
         import json
 
         # Try __NEXT_DATA__ or similar.
-        match = re.search(r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>', html, re.DOTALL)
+        match = re.search(
+            r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
         if match:
             try:
                 return json.loads(match.group(1))
@@ -448,16 +462,20 @@ class YCWorkExtractor(BasePlatformExtractor):
                     href = await title_el.get_attribute("href")
                     url = urljoin("https://www.workatastartup.com/", href) if href else None
 
-                    company_el = await card.query_selector("div[class*='company'], span[class*='company']")
+                    company_el = await card.query_selector(
+                        "div[class*='company'], span[class*='company']"
+                    )
                     company = (await company_el.inner_text()).strip() if company_el else None
 
-                    leads.append(RawLead(
-                        platform="yc_work",
-                        platform_job_id=_make_id(url or title),
-                        title=title[:500],
-                        company=company,
-                        url=url,
-                    ))
+                    leads.append(
+                        RawLead(
+                            platform="yc_work",
+                            platform_job_id=_make_id(url or title),
+                            title=title[:500],
+                            company=company,
+                            url=url,
+                        )
+                    )
                 except Exception:
                     continue
 
@@ -515,7 +533,8 @@ class AggregatorExtractor(BasePlatformExtractor):
     ) -> None:
         super().__init__(
             browser,
-            rate_limit=rate_limit or RateLimitConfig(
+            rate_limit=rate_limit
+            or RateLimitConfig(
                 min_delay=3.0,
                 max_delay=8.0,
                 jitter_factor=0.3,
@@ -536,7 +555,7 @@ class AggregatorExtractor(BasePlatformExtractor):
             "location_selector": "span.location, .job-location, [data-location]",
             "paginate": True,
             "next_page_selector": "a[rel='next'], a.next, .pagination a:last-child",
-            ** (site_config or {}),
+            **(site_config or {}),
         }
 
     # ── BasePlatformExtractor interface ─────────────────────────────────
@@ -574,9 +593,7 @@ class AggregatorExtractor(BasePlatformExtractor):
         leads: list[RawLead] = []
 
         try:
-            cards = await self._browser.page.query_selector_all(
-                self._site_config["card_selector"]
-            )
+            cards = await self._browser.page.query_selector_all(self._site_config["card_selector"])
         except Exception as exc:
             logger.warning("aggregator.parse_no_cards", error=str(exc))
             return []

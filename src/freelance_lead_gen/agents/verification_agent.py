@@ -215,7 +215,9 @@ class VerificationAgent:
         score = self._compute_overall_score(
             banned_count=regex_issues["count"],
             ai_marker_count=ai_issues["count"],
-            structure_score=structure_issues["structure_score"] if isinstance(structure_issues, dict) else 50,
+            structure_score=structure_issues["structure_score"]
+            if isinstance(structure_issues, dict)
+            else 50,
             readability_score=readability,
             length_penalty=length_check["penalty"],
         )
@@ -383,13 +385,9 @@ class VerificationAgent:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
         if len(paragraphs) < _MIN_PARAGRAPHS:
-            issues.append(
-                f"Too few paragraphs: {len(paragraphs)} (minimum {_MIN_PARAGRAPHS})"
-            )
+            issues.append(f"Too few paragraphs: {len(paragraphs)} (minimum {_MIN_PARAGRAPHS})")
         elif len(paragraphs) > _MAX_PARAGRAPHS:
-            issues.append(
-                f"Too many paragraphs: {len(paragraphs)} (maximum {_MAX_PARAGRAPHS})"
-            )
+            issues.append(f"Too many paragraphs: {len(paragraphs)} (maximum {_MAX_PARAGRAPHS})")
 
         # Check for bullet points.
         if re.search(r"^\s*[-*+]\s", text, re.MULTILINE):
@@ -414,10 +412,10 @@ class VerificationAgent:
 
         # Check for emoji in draft text.
         emoji_pattern = re.compile(
-            "[\U0001F600-\U0001F9FF"
-            "\U0001F300-\U0001F5FF"
-            "\U0001F680-\U0001F6FF"
-            "\U0001F1E0-\U0001F1FF"
+            "[\U0001f600-\U0001f9ff"
+            "\U0001f300-\U0001f5ff"
+            "\U0001f680-\U0001f6ff"
+            "\U0001f1e0-\U0001f1ff"
             "☀-⛿"
             "✀-➿]"
         )
@@ -554,13 +552,9 @@ class VerificationAgent:
 
         # Check that the draft mentions at least one skill from the listing.
         if opportunity.skills:
-            mentioned_skills = [
-                s for s in opportunity.skills if s.lower() in body_lower
-            ]
+            mentioned_skills = [s for s in opportunity.skills if s.lower() in body_lower]
             if not mentioned_skills:
-                issues.append(
-                    "Draft does not mention any required skills from the job posting"
-                )
+                issues.append("Draft does not mention any required skills from the job posting")
             elif len(mentioned_skills) < min(2, len(opportunity.skills)):
                 issues.append(
                     f"Draft only mentions {len(mentioned_skills)}/{len(opportunity.skills)} "

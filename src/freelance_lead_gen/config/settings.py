@@ -25,8 +25,12 @@ class _BrowserSettings(BaseSettings):
         description="Path to the browser user data directory.",
     )
     profile_name: str = Field(default="Default", description="Browser profile name to use.")
-    viewport_width: int = Field(default=1920, ge=800, le=3840, description="Default viewport width (px).")
-    viewport_height: int = Field(default=1080, ge=600, le=2160, description="Default viewport height (px).")
+    viewport_width: int = Field(
+        default=1920, ge=800, le=3840, description="Default viewport width (px)."
+    )
+    viewport_height: int = Field(
+        default=1080, ge=600, le=2160, description="Default viewport height (px)."
+    )
 
     # ── computed convenience ────────────────────────────────────────────
     @property
@@ -40,7 +44,9 @@ class _DiscoverySettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="DISCOVERY_")
 
-    max_daily: int = Field(default=50, ge=1, le=500, description="Maximum opportunities to process per day.")
+    max_daily: int = Field(
+        default=50, ge=1, le=500, description="Maximum opportunities to process per day."
+    )
     schedule_interval_minutes: int = Field(
         default=60,
         ge=5,
@@ -65,12 +71,16 @@ class _LLMSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    provider: str = Field(default="opencode", description="LLM provider name (for logging / routing).")
+    provider: str = Field(
+        default="opencode", description="LLM provider name (for logging / routing)."
+    )
     model: str = Field(default="deepseek-v4-flash", description="Model identifier string.")
     base_url: str = Field(default="https://opencode.ai/zen/go/v1", description="API base URL.")
     api_key: str = Field(default="", description="API key (blank allowed for local providers).")
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum API call retries.")
-    timeout_seconds: int = Field(default=120, ge=10, le=600, description="Request timeout in seconds.")
+    timeout_seconds: int = Field(
+        default=120, ge=10, le=600, description="Request timeout in seconds."
+    )
 
     @field_validator("base_url")
     @classmethod
@@ -106,7 +116,9 @@ class _HITLSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HITL_")
 
     enabled: bool = Field(default=True, description="Enable HITL review gate.")
-    auto_approve: bool = Field(default=False, description="Auto-approve outreach drafts without human review.")
+    auto_approve: bool = Field(
+        default=False, description="Auto-approve outreach drafts without human review."
+    )
     review_timeout_seconds: int = Field(
         default=300,
         ge=30,

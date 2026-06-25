@@ -101,9 +101,7 @@ class RawLead:
     raw_html: str | None = None
     """Raw HTML snippet of the listing card (for debugging / re-parsing)."""
 
-    extracted_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    extracted_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     """ISO-format timestamp of extraction."""
 
 
@@ -238,7 +236,9 @@ class GenericPlaywrightExtractor(Extractor):
         try:
             await self._browser.navigate(url, wait_until="networkidle", timeout_ms=60_000)
         except Exception as exc:
-            logger.exception("extractor.navigation_failed", platform=self._platform_name, url=url, error=str(exc))
+            logger.exception(
+                "extractor.navigation_failed", platform=self._platform_name, url=url, error=str(exc)
+            )
             return []
 
         # CAPTCHA check.
@@ -255,7 +255,11 @@ class GenericPlaywrightExtractor(Extractor):
         try:
             await self._browser.wait_for_selector(self._card_selector, timeout_ms=15_000)
         except Exception:
-            logger.warning("extractor.no_cards_found", platform=self._platform_name, selector=self._card_selector)
+            logger.warning(
+                "extractor.no_cards_found",
+                platform=self._platform_name,
+                selector=self._card_selector,
+            )
             return []
 
         # Anti-detection: random scroll to trigger lazy loading.
@@ -332,19 +336,23 @@ class GenericPlaywrightExtractor(Extractor):
         url = await self._get_card_href(card, self._url_selector)
         description = (
             await self._get_card_text(card, self._description_selector)
-            if self._description_selector else ""
+            if self._description_selector
+            else ""
         )
         company = (
             await self._get_card_text(card, self._company_selector)
-            if self._company_selector else None
+            if self._company_selector
+            else None
         )
         budget_text = (
             await self._get_card_text(card, self._budget_selector)
-            if self._budget_selector else None
+            if self._budget_selector
+            else None
         )
         posted_text = (
             await self._get_card_text(card, self._posted_date_selector)
-            if self._posted_date_selector else None
+            if self._posted_date_selector
+            else None
         )
 
         budget_min, budget_max = self._parse_budget(budget_text) if budget_text else (None, None)

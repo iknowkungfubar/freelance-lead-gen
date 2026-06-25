@@ -89,7 +89,6 @@ class NavigationTimeoutError(BrowserError):
     """Raised when a navigation or page action times out."""
 
 
-
 # ── Managed Browser ────────────────────────────────────────────────────────────
 
 
@@ -277,7 +276,9 @@ class ManagedBrowser:
             await stealth(self._page)
             logger.info("browser.stealth_applied")
         except ImportError:
-            logger.warning("browser.stealth_not_available", detail="playwright-stealth package not installed")
+            logger.warning(
+                "browser.stealth_not_available", detail="playwright-stealth package not installed"
+            )
 
         # Inject Canvas / WebGL / AudioContext fingerprint randomization.
         await self._page.add_init_script("""
@@ -468,7 +469,9 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             err_msg = str(exc)
             if "Timeout" in err_msg or "timeout" in err_msg:
                 logger.warning("browser.navigation_timeout", url=url, timeout=timeout)
-                raise NavigationTimeoutError(f"Navigation to {url} timed out after {timeout}ms") from exc
+                raise NavigationTimeoutError(
+                    f"Navigation to {url} timed out after {timeout}ms"
+                ) from exc
             raise BrowserError(f"Navigation to {url} failed: {exc}", original=exc) from exc
 
         return self.page
@@ -664,10 +667,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         try:
             smooth_str = "smooth" if smooth else "instant"
             script = (
-                f"window.scrollBy({{\n"
-                f"  {axis}: {sign * amount},\n"
-                f"  behavior: '{smooth_str}'"
-                f"}});"
+                f"window.scrollBy({{\n  {axis}: {sign * amount},\n  behavior: '{smooth_str}'}});"
             )
             await self.page.evaluate(script)
             await asyncio.sleep(random.uniform(0.3, 0.8))
@@ -1039,7 +1039,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             except (NavigationTimeoutError, BrowserError) as exc:
                 last_error = exc
                 if attempt < retries:
-                    backoff = 2.0 ** attempt + random.uniform(0, 1.0)
+                    backoff = 2.0**attempt + random.uniform(0, 1.0)
                     logger.warning(
                         "browser.retry_navigation",
                         url=url,

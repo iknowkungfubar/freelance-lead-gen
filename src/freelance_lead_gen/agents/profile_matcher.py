@@ -307,10 +307,18 @@ class ProfileMatcher:
         self._total_weight: float = self._weights.total
 
         # Pre-compute lowercase sets for fast matching.
-        self._profile_skills_lower: set[str] = {s.strip().lower() for s in self._profile.skills if s.strip()}
-        self._profile_industries_lower: set[str] = {i.strip().lower() for i in self._profile.industries if i.strip()}
-        self._excluded_lower: set[str] = {k.strip().lower() for k in self._profile.excluded_keywords if k.strip()}
-        self._preferred_lower: set[str] = {k.strip().lower() for k in self._profile.preferred_keywords if k.strip()}
+        self._profile_skills_lower: set[str] = {
+            s.strip().lower() for s in self._profile.skills if s.strip()
+        }
+        self._profile_industries_lower: set[str] = {
+            i.strip().lower() for i in self._profile.industries if i.strip()
+        }
+        self._excluded_lower: set[str] = {
+            k.strip().lower() for k in self._profile.excluded_keywords if k.strip()
+        }
+        self._preferred_lower: set[str] = {
+            k.strip().lower() for k in self._profile.preferred_keywords if k.strip()
+        }
 
     # ── Properties ───────────────────────────────────────────────────────
 
@@ -324,9 +332,15 @@ class ProfileMatcher:
         self._profile = new_profile
         # Recompute caches.
         self._profile_skills_lower = {s.strip().lower() for s in new_profile.skills if s.strip()}
-        self._profile_industries_lower = {i.strip().lower() for i in new_profile.industries if i.strip()}
-        self._excluded_lower = {k.strip().lower() for k in new_profile.excluded_keywords if k.strip()}
-        self._preferred_lower = {k.strip().lower() for k in new_profile.preferred_keywords if k.strip()}
+        self._profile_industries_lower = {
+            i.strip().lower() for i in new_profile.industries if i.strip()
+        }
+        self._excluded_lower = {
+            k.strip().lower() for k in new_profile.excluded_keywords if k.strip()
+        }
+        self._preferred_lower = {
+            k.strip().lower() for k in new_profile.preferred_keywords if k.strip()
+        }
 
     @property
     def weights(self) -> MatchingWeights:
@@ -387,8 +401,9 @@ class ProfileMatcher:
 
         skill_match_score = self._compute_skill_match(all_opp_skills)
         diagnostics["matched_skills"] = sorted(
-            s for s in self._profile_skills_lower if s in all_opp_skills
-            or any(_fuzzy_match(s, opp_s) for opp_s in all_opp_skills)
+            s
+            for s in self._profile_skills_lower
+            if s in all_opp_skills or any(_fuzzy_match(s, opp_s) for opp_s in all_opp_skills)
         )
         diagnostics["opp_skills_raw"] = sorted(opportunity_skills_lower)
         diagnostics["text_skills_extracted"] = sorted(text_skills)
@@ -567,15 +582,9 @@ class ProfileMatcher:
         excluded_found = sum(1 for k in self._excluded_lower if k in combined_text)
 
         preferred_ratio = (
-            preferred_found / len(self._preferred_lower)
-            if self._preferred_lower
-            else 0.0
+            preferred_found / len(self._preferred_lower) if self._preferred_lower else 0.0
         )
-        excluded_ratio = (
-            excluded_found / len(self._excluded_lower)
-            if self._excluded_lower
-            else 0.0
-        )
+        excluded_ratio = excluded_found / len(self._excluded_lower) if self._excluded_lower else 0.0
 
         score = 50.0 + (preferred_ratio * 40.0) - (excluded_ratio * 60.0)
         return max(0.0, min(100.0, score))
@@ -693,5 +702,3 @@ def _extract_skill_mentions(text: str, profile_skills: set[str]) -> set[str]:
         if skill in text_lower:
             found.add(skill)
     return found
-
-

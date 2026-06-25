@@ -42,7 +42,9 @@ class ScoringThresholds(BaseModel):
     """
 
     high: int = Field(default=75, ge=0, le=100, description="Minimum score for HIGH tier.")
-    potential: int = Field(default=50, ge=0, le=100, description="Minimum score for POTENTIAL tier.")
+    potential: int = Field(
+        default=50, ge=0, le=100, description="Minimum score for POTENTIAL tier."
+    )
     low: int = Field(default=0, ge=0, le=100, description="Below this is LOW (typically 0).")
 
     @property
@@ -296,9 +298,7 @@ class FilteringPipeline:
                         llm_result=llm_result,
                     )
                     opp.score = blended["score"]
-                    opp.notes = (
-                        f"LLM: {llm_result.reasoning}"
-                    )
+                    opp.notes = f"LLM: {llm_result.reasoning}"
                     if llm_result.risks:
                         opp.notes += f" | Risks: {'; '.join(llm_result.risks)}"
                     tier = self._assign_tier(blended["score"])
@@ -398,7 +398,10 @@ class FilteringPipeline:
                 llm_result=llm_class,
             )
         else:
-            blended = {"score": scores["overall_score"], "skill_match_score": scores["skill_match_score"]}
+            blended = {
+                "score": scores["overall_score"],
+                "skill_match_score": scores["skill_match_score"],
+            }
 
         return LeadScoringResult(
             qualified=scores["overall_score"] >= self._thresholds.potential,

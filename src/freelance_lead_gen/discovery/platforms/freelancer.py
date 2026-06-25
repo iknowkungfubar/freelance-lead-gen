@@ -57,16 +57,13 @@ _PROJECT_SKILLS_SELECTOR: str = (
     "span[class*='skill'], a[class*='tag']"
 )
 _PROJECT_POSTED_SELECTOR: str = (
-    "span.JobSearchCard-primary-timestamp, "
-    "span[class*='time-ago'], span[class*='posted']"
+    "span.JobSearchCard-primary-timestamp, span[class*='time-ago'], span[class*='posted']"
 )
 _PROJECT_LOCATION_SELECTOR: str = (
-    "span.JobSearchCard-primary-location, "
-    "span[class*='location'], span[class*='country']"
+    "span.JobSearchCard-primary-location, span[class*='location'], span[class*='country']"
 )
 _PROJECT_NEXT_PAGE_SELECTOR: str = (
-    "a[rel='next'], a.pagination-next, "
-    "a[class*='next'], button[class*='next']"
+    "a[rel='next'], a.pagination-next, a[class*='next'], button[class*='next']"
 )
 _CONTEST_CARD_SELECTOR: str = "div.ContestCard-item, div[class*='contest-card']"
 
@@ -113,7 +110,8 @@ class FreelancerExtractor(BasePlatformExtractor):
     ) -> None:
         super().__init__(
             browser,
-            rate_limit=rate_limit or RateLimitConfig(
+            rate_limit=rate_limit
+            or RateLimitConfig(
                 min_delay=4.0,
                 max_delay=10.0,
                 jitter_factor=0.35,
@@ -124,7 +122,9 @@ class FreelancerExtractor(BasePlatformExtractor):
             credentials=credentials,
             settings=settings,
         )
-        self._email = email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        self._email = (
+            email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        )
         self._password = password or (credentials or {}).get("password")
         self._include_contests = include_contests
 
@@ -395,6 +395,7 @@ class FreelancerExtractor(BasePlatformExtractor):
 
         # Fallback.
         import hashlib
+
         return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
     # ── Authentication check ────────────────────────────────────────────
@@ -415,8 +416,7 @@ class FreelancerExtractor(BasePlatformExtractor):
 
             # Look for user avatar / dashboard indicator.
             return await self._browser.is_element_visible(
-                "img[class*='avatar'], div[class*='user-menu'], "
-                "a[href*='dashboard']"
+                "img[class*='avatar'], div[class*='user-menu'], a[href*='dashboard']"
             )
         except Exception:
             return False

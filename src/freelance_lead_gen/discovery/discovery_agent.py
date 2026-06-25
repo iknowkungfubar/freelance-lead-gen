@@ -136,9 +136,7 @@ class DiscoveryAgent:
 
         # Resolve search queries.
         self._search_queries = (
-            search_queries
-            if search_queries is not None
-            else self._settings.discovery.queries
+            search_queries if search_queries is not None else self._settings.discovery.queries
         )
 
         # Resolve platform extractors.
@@ -311,10 +309,12 @@ class DiscoveryAgent:
 
             except Exception as exc:
                 report.total_errors += 1
-                report.errors.append({
-                    "platform": platform_name,
-                    "error": str(exc),
-                })
+                report.errors.append(
+                    {
+                        "platform": platform_name,
+                        "error": str(exc),
+                    }
+                )
 
                 report.per_platform[platform_name] = {
                     "found": 0,
@@ -402,9 +402,8 @@ class DiscoveryAgent:
                 except Exception as exc:
                     errors += 1
                     if attempt < _MAX_RETRIES:
-                        backoff = (
-                            _RETRY_BACKOFF_BASE ** attempt
-                            + random.uniform(0, _RETRY_BACKOFF_JITTER)
+                        backoff = _RETRY_BACKOFF_BASE**attempt + random.uniform(
+                            0, _RETRY_BACKOFF_JITTER
                         )
                         logger.warning(
                             "discovery_agent.retry",

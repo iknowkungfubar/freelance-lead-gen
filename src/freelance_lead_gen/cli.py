@@ -145,7 +145,9 @@ async def _do_list(
     try:
         await init_db()
     except Exception as exc:
-        click.echo(f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True)
+        click.echo(
+            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True
+        )
         return
 
     repo = OpportunityRepository()
@@ -156,7 +158,10 @@ async def _do_list(
         try:
             status_filter = LeadStatus(status.lower())
         except ValueError:
-            click.echo(f"Invalid status: {status!r}. Valid values: {', '.join(s.value for s in LeadStatus)}", err=True)
+            click.echo(
+                f"Invalid status: {status!r}. Valid values: {', '.join(s.value for s in LeadStatus)}",
+                err=True,
+            )
             return
 
     opportunities = await repo.search(
@@ -223,7 +228,9 @@ async def _do_stats() -> None:
     try:
         await init_db()
     except Exception as exc:
-        click.echo(f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True)
+        click.echo(
+            f"Database not initialised. Run `freelance-lead-gen init` first: {exc}", err=True
+        )
         return
 
     repo = OpportunityRepository()
@@ -231,9 +238,9 @@ async def _do_stats() -> None:
     stats_data = await repo.get_stats()
     platform_counts = await repo.get_platform_counts()
 
-    click.echo(f"\n{'='*40}")
+    click.echo(f"\n{'=' * 40}")
     click.echo("  Pipeline Statistics")
-    click.echo(f"{'='*40}")
+    click.echo(f"{'=' * 40}")
     click.echo(f"  Total leads:         {stats_data.get('total', 0)}")
     click.echo(f"  Discovered:          {stats_data.get('discovered', 0)}")
     click.echo(f"  Qualified:           {stats_data.get('qualified', 0)}")
@@ -242,11 +249,11 @@ async def _do_stats() -> None:
     click.echo(f"  Submitted:           {stats_data.get('submitted', 0)}")
     click.echo(f"  Archived:            {stats_data.get('archived', 0)}")
     click.echo(f"  Rejected:            {stats_data.get('rejected', 0)}")
-    click.echo(f"{'='*40}")
+    click.echo(f"{'=' * 40}")
     click.echo(f"  Platforms:           {len(platform_counts)}")
     for pname, pcount in sorted(platform_counts.items()):
         click.echo(f"    {pname}: {pcount}")
-    click.echo(f"{'='*40}\n")
+    click.echo(f"{'=' * 40}\n")
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────

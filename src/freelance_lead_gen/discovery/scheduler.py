@@ -422,12 +422,15 @@ class DiscoveryScheduler:
                 self._stats.total_failures += platform_result.get("failed", 0)
 
                 # Update per-platform stats.
-                ps = self._stats.platform_stats.setdefault(platform_name, {
-                    "runs": 0,
-                    "leads": 0,
-                    "new": 0,
-                    "failures": 0,
-                })
+                ps = self._stats.platform_stats.setdefault(
+                    platform_name,
+                    {
+                        "runs": 0,
+                        "leads": 0,
+                        "new": 0,
+                        "failures": 0,
+                    },
+                )
                 ps["runs"] += 1
                 ps["leads"] += leads_found
                 ps["new"] += leads_new
@@ -485,9 +488,7 @@ class DiscoveryScheduler:
             id=job_id,
             name=platform_name,
             replace_existing=True,
-            next_run_time=(
-                datetime.now(UTC) + timedelta(seconds=start_delay)
-            ),
+            next_run_time=(datetime.now(UTC) + timedelta(seconds=start_delay)),
         )
 
         logger.debug(

@@ -219,7 +219,9 @@ async def _record_migration(
     """Insert a record of the applied migration into the registry."""
     migration_id = migration.id
     description = migration.description
-    applied_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.now(UTC).microsecond:06d}Z"
+    applied_at = (
+        datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.now(UTC).microsecond:06d}Z"
+    )
     # Simple checksum: first 8 hex chars of a UUID based on the migration content.
     checksum = uuid.uuid5(uuid.NAMESPACE_DNS, "".join(migration.up)).hex[:8]
 
@@ -325,9 +327,7 @@ async def get_migration_status() -> Sequence[dict[str, Any]]:
             }
             if migration.id in applied:
                 result = await conn.execute(
-                    text(
-                        f"SELECT applied_at FROM {_REGISTRY_TABLE} WHERE id = :id"
-                    ),
+                    text(f"SELECT applied_at FROM {_REGISTRY_TABLE} WHERE id = :id"),
                     {"id": migration.id},
                 )
                 row_result = result.fetchone()

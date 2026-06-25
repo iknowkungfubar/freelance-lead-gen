@@ -290,9 +290,7 @@ class LeadGenOrchestrator:
         report = OrchestratorReport()
         report.started_at = datetime.now(UTC)
 
-        hitl_enabled = (
-            run_hitl if run_hitl is not None else self._settings.hitl.enabled
-        )
+        hitl_enabled = run_hitl if run_hitl is not None else self._settings.hitl.enabled
 
         try:
             # ── Phase 1: Discovery ───────────────────────────────────────
@@ -322,9 +320,7 @@ class LeadGenOrchestrator:
 
             qualified: list[LeadOpportunity] = []
             if run_filtering:
-                qualified = await self._run_filtering_phase(
-                    current_opps, profile, report
-                )
+                qualified = await self._run_filtering_phase(current_opps, profile, report)
             else:
                 qualified = current_opps
 
@@ -340,9 +336,7 @@ class LeadGenOrchestrator:
 
             drafts: list[OutboundDraft] = []
             if run_personalization:
-                drafts = await self._run_personalization_phase(
-                    qualified, profile, report
-                )
+                drafts = await self._run_personalization_phase(qualified, profile, report)
             else:
                 # Create minimal drafts even without generation.
                 for opp in qualified:
@@ -364,23 +358,23 @@ class LeadGenOrchestrator:
 
             verified_drafts: list[tuple[OutboundDraft, VerificationResult]] = []
             if run_verification:
-                verified_drafts = await self._run_verification_phase(
-                    drafts, report
-                )
+                verified_drafts = await self._run_verification_phase(drafts, report)
             else:
                 # Bypass verification — every draft passes.
                 for d in drafts:
-                    verified_drafts.append((
-                        d,
-                        VerificationResult(
-                            passed=True,
-                            score=100,
-                            word_count=len((d.current_body or "").split()),
-                            paragraph_count=len(
-                                [p for p in (d.current_body or "").split("\n\n") if p.strip()]
+                    verified_drafts.append(
+                        (
+                            d,
+                            VerificationResult(
+                                passed=True,
+                                score=100,
+                                word_count=len((d.current_body or "").split()),
+                                paragraph_count=len(
+                                    [p for p in (d.current_body or "").split("\n\n") if p.strip()]
+                                ),
                             ),
-                        ),
-                    ))
+                        )
+                    )
 
             # ── Phase 5: HITL Review ─────────────────────────────────────
             if self._check_shutdown(report):
@@ -409,11 +403,13 @@ class LeadGenOrchestrator:
             logger.error("orchestrator.pipeline_fatal_error", error=str(exc), exc_info=True)
             report.phases_failed.append("fatal")
             report.total_errors += 1
-            report.errors.append({
-                "phase": "global",
-                "opportunity_id": "",
-                "message": str(exc),
-            })
+            report.errors.append(
+                {
+                    "phase": "global",
+                    "opportunity_id": "",
+                    "message": str(exc),
+                }
+            )
             report.success = False
 
         finally:
@@ -618,11 +614,13 @@ class LeadGenOrchestrator:
         except Exception as exc:
             report.phases_failed.append(PipelinePhase.DISCOVERY)
             report.total_errors += 1
-            report.errors.append({
-                "phase": PipelinePhase.DISCOVERY,
-                "opportunity_id": "",
-                "message": str(exc),
-            })
+            report.errors.append(
+                {
+                    "phase": PipelinePhase.DISCOVERY,
+                    "opportunity_id": "",
+                    "message": str(exc),
+                }
+            )
             logger.error(
                 "orchestrator.phase_discovery_failed",
                 error=str(exc),
@@ -670,11 +668,13 @@ class LeadGenOrchestrator:
         except Exception as exc:
             report.phases_failed.append(PipelinePhase.FILTERING)
             report.total_errors += 1
-            report.errors.append({
-                "phase": PipelinePhase.FILTERING,
-                "opportunity_id": "",
-                "message": str(exc),
-            })
+            report.errors.append(
+                {
+                    "phase": PipelinePhase.FILTERING,
+                    "opportunity_id": "",
+                    "message": str(exc),
+                }
+            )
             logger.error(
                 "orchestrator.phase_filtering_failed",
                 error=str(exc),
@@ -721,11 +721,13 @@ class LeadGenOrchestrator:
 
             except Exception as exc:
                 report.total_errors += 1
-                report.errors.append({
-                    "phase": PipelinePhase.PERSONALIZATION,
-                    "opportunity_id": opp.id,
-                    "message": str(exc),
-                })
+                report.errors.append(
+                    {
+                        "phase": PipelinePhase.PERSONALIZATION,
+                        "opportunity_id": opp.id,
+                        "message": str(exc),
+                    }
+                )
                 logger.warning(
                     "orchestrator.draft_failed",
                     opportunity_id=opp.id,
@@ -757,18 +759,22 @@ class LeadGenOrchestrator:
         verified: list[tuple[OutboundDraft, VerificationResult]] = []
         sem = asyncio.Semaphore(5)  # Limit concurrent LLM calls.
 
-        async def _verify_one(draft: OutboundDraft) -> tuple[OutboundDraft, VerificationResult] | None:
+        async def _verify_one(
+            draft: OutboundDraft,
+        ) -> tuple[OutboundDraft, VerificationResult] | None:
             async with sem:
                 try:
                     result = await self._verification.verify(draft, use_llm=False)
                     return (draft, result)
                 except Exception as exc:
                     report.total_errors += 1
-                    report.errors.append({
-                        "phase": PipelinePhase.VERIFICATION,
-                        "opportunity_id": draft.opportunity_id,
-                        "message": str(exc),
-                    })
+                    report.errors.append(
+                        {
+                            "phase": PipelinePhase.VERIFICATION,
+                            "opportunity_id": draft.opportunity_id,
+                            "message": str(exc),
+                        }
+                    )
                     logger.warning(
                         "orchestrator.verification_failed",
                         draft_id=draft.id,

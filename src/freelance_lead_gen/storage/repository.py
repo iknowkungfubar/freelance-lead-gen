@@ -410,19 +410,23 @@ class OpportunityRepository:
             # or cases where the FTS index hasn't been populated yet).
             fts_results = []
             try:
-                fts_results = await self._search_fts(text_query, limit=limit, offset=offset, **params)
+                fts_results = await self._search_fts(
+                    text_query, limit=limit, offset=offset, **params
+                )
             except Exception:
                 logger.debug("fts_search_failed, falling back to LIKE", query=text_query)
 
             if fts_results:
                 return fts_results
 
-            conditions.extend([
-                "(o.title LIKE :text_query OR "
-                "o.description LIKE :text_query OR "
-                "o.company LIKE :text_query OR "
-                "o.skills LIKE :text_query)"
-            ])
+            conditions.extend(
+                [
+                    "(o.title LIKE :text_query OR "
+                    "o.description LIKE :text_query OR "
+                    "o.company LIKE :text_query OR "
+                    "o.skills LIKE :text_query)"
+                ]
+            )
             params["text_query"] = f"%{text_query}%"
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -452,9 +456,7 @@ class OpportunityRepository:
         **extra_params: Any,
     ) -> list[LeadOpportunity]:
         """Full-text search via the FTS5 virtual table."""
-        fts_query = " OR ".join(
-            f'"{word}"*' for word in query.split() if word.strip()
-        )
+        fts_query = " OR ".join(f'"{word}"*' for word in query.split() if word.strip())
         if not fts_query:
             return []
 
@@ -665,16 +667,20 @@ class OpportunityRepository:
         # Fields that come from scraping — these can be safely overwritten.
         # Pipeline state fields (status, score, notes) are preserved.
         upsertable_fields = {
-            "title", "description", "budget_min", "budget_max",
-            "currency", "skills", "url", "location", "raw_data",
-            "updated_at", "company",
+            "title",
+            "description",
+            "budget_min",
+            "budget_max",
+            "currency",
+            "skills",
+            "url",
+            "location",
+            "raw_data",
+            "updated_at",
+            "company",
         }
 
-        conflict_updates = [
-            f"{k} = excluded.{k}"
-            for k in row
-            if k in upsertable_fields
-        ]
+        conflict_updates = [f"{k} = excluded.{k}" for k in row if k in upsertable_fields]
         conflict_set = ", ".join(conflict_updates)
 
         stmt = (
@@ -860,9 +866,7 @@ class OpportunityRepository:
 
         return _row_to_draft(row)
 
-    async def get_drafts_for_opportunity(
-        self, opportunity_id: str
-    ) -> list[OutboundDraft]:
+    async def get_drafts_for_opportunity(self, opportunity_id: str) -> list[OutboundDraft]:
         """Return all drafts associated with an opportunity.
 
         Parameters
@@ -877,9 +881,7 @@ class OpportunityRepository:
         """
         async with self._session_scope() as session:
             result = await session.execute(
-                text(
-                    "SELECT * FROM drafts WHERE opportunity_id = :oid ORDER BY created_at DESC"
-                ),
+                text("SELECT * FROM drafts WHERE opportunity_id = :oid ORDER BY created_at DESC"),
                 {"oid": opportunity_id},
             )
             return [_row_to_draft(row) for row in result.mappings().fetchall()]
