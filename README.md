@@ -46,6 +46,27 @@ freelance-lead-gen discover --dry-run
 freelance-lead-gen serve
 ```
 
+### 5. Platform Credentials
+
+To scrape opportunities from Upwork, LinkedIn, and Freelancer, the system needs to log in to each platform using your account credentials.
+
+- You need a **free account** on each platform you want to monitor
+- The browser automation uses your credentials to log in automatically during discovery
+- Credentials are stored **locally** in `.env` and are never sent anywhere except the platform itself
+
+Add your credentials to `.env`:
+
+```ini
+UPWORK_USERNAME=your_email@example.com
+UPWORK_PASSWORD=your_password
+LINKEDIN_USERNAME=your_email@example.com
+LINKEDIN_PASSWORD=your_password
+FREELANCER_USERNAME=your_email@example.com
+FREELANCER_PASSWORD=your_password
+```
+
+> **Security note:** Consider using a dedicated account for each platform rather than your main account. The browser automation performs automated searches that could appear unusual on an active account.
+
 ---
 
 ## Features
@@ -115,9 +136,24 @@ graph LR
 
 ## Quick Start
 
-> **New user?** See the [Getting Started](#getting-started) section above for quick setup via Docker or the `quickstart` wizard.
->
-> The instructions below are the full manual setup for development use.
+The fastest way to get started is the interactive **quickstart wizard**:
+
+```bash
+pip install freelance-lead-gen
+freelance-lead-gen quickstart
+```
+
+The wizard will walk you through setting up your API key and platform credentials
+in under 2 minutes, then you're ready to go:
+
+```bash
+freelance-lead-gen discover    # find opportunities
+freelance-lead-gen review      # review and approve drafts
+```
+
+### Manual Setup (Alternative)
+
+For development or full control, clone the repository and set up manually:
 
 ```bash
 # Clone the repository

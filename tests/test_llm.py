@@ -244,6 +244,23 @@ class TestMaxRetriesExhausted:
         assert isinstance(exc_info.value.original, InternalServerError)
         assert "Server error" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    async def test_error_paths_are_logged(self, llm_client: LLMClient) -> None:
+        """Errors are recorded in stats when retries are exhausted."""
+        mock_create = AsyncMock(side_effect=_make_rate_limit_error())
+        llm_client._client.chat.completions.create = mock_create
+
+        with patch("asyncio.sleep", AsyncMock()):
+            with pytest.raises(LLMRateLimitError):
+                await llm_client.chat_completion(
+                    [{"role": "user", "content": "hello"}],
+                )
+
+        stats = llm_client.stats
+        assert stats["total_errors"] == llm_client._max_retries  # 3 failures
+        assert stats["total_retries"] == llm_client._max_retries  # 3 retries
+        assert stats["total_requests"] == 0  # no successful requests
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Successful calls & structured output parsing
@@ -321,6 +338,24 @@ class TestSuccessfulCalls:
 
         assert result["match"] is True
         assert result["score"] == 72
+
+    @pytest.mark.asyncio
+    async def test_stats_after_multiple_calls(self, llm_client: LLMClient) -> None:
+        """Stats accumulate correctly after 3+ successful calls."""
+        mock_create = AsyncMock(
+            return_value=_chat_completion_response(content="ok", total_tokens=10),
+        )
+        llm_client._client.chat.completions.create = mock_create
+
+        for i in range(3):
+            await llm_client.chat_completion(
+                [{"role": "user", "content": f"call {i}"}],
+            )
+
+        stats = llm_client.stats
+        assert stats["total_requests"] == 3
+        assert stats["total_tokens"] == 30  # 3 calls x 10 tokens each
+        assert stats["total_errors"] == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
