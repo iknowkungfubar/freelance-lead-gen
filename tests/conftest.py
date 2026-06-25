@@ -17,6 +17,7 @@ from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus, O
 from freelance_lead_gen.storage.database import close_db, init_db
 from freelance_lead_gen.storage.migrations import apply_migrations
 from freelance_lead_gen.storage.repository import OpportunityRepository
+from tests.mock_llm_server import MockLLMServer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -219,6 +220,26 @@ def mock_llm() -> AsyncMock:
     mock.close = AsyncMock()
 
     return mock
+
+
+@pytest_asyncio.fixture
+async def mock_llm_server() -> AsyncGenerator[MockLLMServer, None]:
+    """Start a :class:`MockLLMServer` on a random port and yield it.
+
+    The server responds to ``POST /v1/chat/completions`` with realistic JSON
+    by default.  Tests can configure error simulation and latency via the
+    yielded :class:`MockLLMServer` instance::
+
+        async def test_retry(mock_llm_server: MockLLMServer) -> None:
+            mock_llm_server.set_error_mode("rate_limit")
+            # ... pipeline runs and retries ...
+
+    The server is automatically stopped after the test.
+    """
+    server = MockLLMServer()
+    await server.start()
+    yield server
+    await server.stop()
 
 
 # ── Working directory fixture ─────────────────────────────────────────────────
