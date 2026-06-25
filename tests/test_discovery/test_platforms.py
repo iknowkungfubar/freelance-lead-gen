@@ -32,7 +32,7 @@ class TestUpworkUrlBuilding:
         url = template.format(query="python+developer")
 
         assert "https://" in url
-        assert "upwork.com" in url
+        assert url.startswith("https://www.upwork.com/")
         assert "python" in url
         assert "developer" in url
 
@@ -70,7 +70,7 @@ class TestLinkedInUrlBuilding:
         url = template.format(query="rag+engineer")
 
         assert "https://" in url
-        assert "linkedin.com" in url
+        assert url.startswith("https://www.linkedin.com/")
         assert "rag" in url
         assert "engineer" in url
 
@@ -106,7 +106,7 @@ class TestFreelancerUrlBuilding:
         url = template.format(query="data+scientist")
 
         assert "https://" in url
-        assert "freelancer.com" in url
+        assert url.startswith("https://www.freelancer.com/")
         assert "keyword=data" in url
         assert "scientist" in url
 
@@ -136,7 +136,7 @@ class TestRemoteOkUrlBuilding:
         url = template.format(query="rust+developer")
 
         assert "https://" in url
-        assert "remoteok.com" in url
+        assert url.startswith("https://remoteok.com/")
         assert "rust" in url
         assert "developer" in url
 

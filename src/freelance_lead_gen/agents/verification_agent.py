@@ -192,7 +192,9 @@ class VerificationAgent:
         score = self._compute_overall_score(
             banned_count=regex_issues["count"],
             ai_marker_count=ai_issues["count"],
-            structure_score=structure_issues["structure_score"] if isinstance(structure_issues, dict) else 50,
+            structure_score=structure_issues["structure_score"]
+            if isinstance(structure_issues, dict)
+            else 50,
             readability_score=readability,
             length_penalty=length_check["penalty"],
         )
@@ -380,13 +382,9 @@ class VerificationAgent:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
         if len(paragraphs) < _MIN_PARAGRAPHS:
-            issues.append(
-                f"Too few paragraphs: {len(paragraphs)} (minimum {_MIN_PARAGRAPHS})"
-            )
+            issues.append(f"Too few paragraphs: {len(paragraphs)} (minimum {_MIN_PARAGRAPHS})")
         elif len(paragraphs) > _MAX_PARAGRAPHS:
-            issues.append(
-                f"Too many paragraphs: {len(paragraphs)} (maximum {_MAX_PARAGRAPHS})"
-            )
+            issues.append(f"Too many paragraphs: {len(paragraphs)} (maximum {_MAX_PARAGRAPHS})")
 
         # Check for bullet points.
         if re.search(r"^\s*[-*+]\s", text, re.MULTILINE):
@@ -410,15 +408,7 @@ class VerificationAgent:
             issues.append(f"Too many exclamation marks: {exclamation_count} (max 1)")
 
         # Check for emoji in draft text.
-        emoji_pattern = re.compile(
-            "[\U0001F600-\U0001F9FF"
-            "\U0001F300-\U0001F5FF"
-            "\U0001F680-\U0001F6FF"
-            "\U0001F1E0-\U0001F1FF"
-            "☀-⛿"
-            "✀-➿]"
-        )
-        if emoji_pattern.search(text):
+        if self._has_emoji(text):
             issues.append("Draft contains emoji — avoid in professional outreach.")
 
         # Score.
@@ -535,6 +525,27 @@ class VerificationAgent:
 
         return total
 
+    @staticmethod
+    def _has_emoji(text: str) -> bool:
+        """Check if text contains emoji characters.
+
+        Uses explicit Unicode code-point ranges for each emoji block
+        rather than a broad regex character class.
+        """
+        _emoji_ranges: list[tuple[int, int]] = [
+            (0x1F600, 0x1F9FF),  # Emoticons + Supplemental
+            (0x1F300, 0x1F5FF),  # Misc Symbols and Pictographs
+            (0x1F680, 0x1F6FF),  # Transport and Map Symbols
+            (0x1F1E0, 0x1F1FF),  # Regional Indicator Symbols (flags)
+            (0x2600, 0x26FF),  # Miscellaneous Symbols
+            (0x2700, 0x27BF),  # Dingbats
+        ]
+        for char in text:
+            cp = ord(char)
+            if any(lo <= cp <= hi for lo, hi in _emoji_ranges):
+                return True
+        return False
+
     # ── Technical accuracy check ──────────────────────────────────────────
 
     def _check_technical_accuracy(
@@ -551,13 +562,9 @@ class VerificationAgent:
 
         # Check that the draft mentions at least one skill from the listing.
         if opportunity.skills:
-            mentioned_skills = [
-                s for s in opportunity.skills if s.lower() in body_lower
-            ]
+            mentioned_skills = [s for s in opportunity.skills if s.lower() in body_lower]
             if not mentioned_skills:
-                issues.append(
-                    "Draft does not mention any required skills from the job posting"
-                )
+                issues.append("Draft does not mention any required skills from the job posting")
             elif len(mentioned_skills) < min(2, len(opportunity.skills)):
                 issues.append(
                     f"Draft only mentions {len(mentioned_skills)}/{len(opportunity.skills)} "

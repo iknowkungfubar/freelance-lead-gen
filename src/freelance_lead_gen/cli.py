@@ -90,7 +90,7 @@ def _validate_settings(*, require_llm_key: bool = True) -> list[str]:
         # Extract the path from the SQLAlchemy URL.
         url_str = str(db_path)
         if url_str.startswith("sqlite+aiosqlite:///"):
-            file_path_str = url_str[len("sqlite+aiosqlite:///"):]
+            file_path_str = url_str[len("sqlite+aiosqlite:///") :]
             if file_path_str:
                 p = Path(file_path_str)
                 parent = p.parent
@@ -340,8 +340,12 @@ async def _do_pipeline(run_discovery: bool, headless: bool) -> None:
     # Display report.
     summary = report.summary
     console.print("\n[bold]Pipeline Complete[/bold]")
-    console.print(f"  Success:              {'[green]Yes[/green]' if summary['success'] else '[red]No[/red]'}")
-    console.print(f"  Phases completed:     {', '.join(report.phases_completed) if report.phases_completed else '[dim]none[/dim]'}")
+    console.print(
+        f"  Success:              {'[green]Yes[/green]' if summary['success'] else '[red]No[/red]'}"
+    )
+    console.print(
+        f"  Phases completed:     {', '.join(report.phases_completed) if report.phases_completed else '[dim]none[/dim]'}"
+    )
     if report.phases_failed:
         console.print(f"  Phases failed:        [red]{', '.join(report.phases_failed)}[/red]")
     console.print(f"  Leads discovered:     {summary['discovered']}")
@@ -446,7 +450,10 @@ async def _do_list(
         try:
             status_filter = LeadStatus(status.lower())
         except ValueError:
-            click.echo(f"Invalid status: {status!r}. Valid values: {', '.join(s.value for s in LeadStatus)}", err=True)
+            click.echo(
+                f"Invalid status: {status!r}. Valid values: {', '.join(s.value for s in LeadStatus)}",
+                err=True,
+            )
             return
 
     opportunities = await repo.search(
@@ -521,9 +528,9 @@ async def _do_stats() -> None:
     stats_data = await repo.get_stats()
     platform_counts = await repo.get_platform_counts()
 
-    click.echo(f"\n{'='*40}")
+    click.echo(f"\n{'=' * 40}")
     click.echo("  Pipeline Statistics")
-    click.echo(f"{'='*40}")
+    click.echo(f"{'=' * 40}")
     click.echo(f"  Total leads:         {stats_data.get('total', 0)}")
     click.echo(f"  Discovered:          {stats_data.get('discovered', 0)}")
     click.echo(f"  Qualified:           {stats_data.get('qualified', 0)}")
@@ -532,18 +539,20 @@ async def _do_stats() -> None:
     click.echo(f"  Submitted:           {stats_data.get('submitted', 0)}")
     click.echo(f"  Archived:            {stats_data.get('archived', 0)}")
     click.echo(f"  Rejected:            {stats_data.get('rejected', 0)}")
-    click.echo(f"{'='*40}")
+    click.echo(f"{'=' * 40}")
     click.echo(f"  Platforms:           {len(platform_counts)}")
     for pname, pcount in sorted(platform_counts.items()):
         click.echo(f"    {pname}: {pcount}")
-    click.echo(f"{'='*40}\n")
+    click.echo(f"{'=' * 40}\n")
 
 
 # ── health ────────────────────────────────────────────────────
 
 
 @main.command()
-@click.option("--check", is_flag=True, help="Machine-readable check for Docker health (exit code only)")
+@click.option(
+    "--check", is_flag=True, help="Machine-readable check for Docker health (exit code only)"
+)
 def health(check: bool) -> None:
     """Show system health status.
 
@@ -617,8 +626,7 @@ async def _do_health(check: bool = False) -> None:
             await writer.wait_closed()
             if not check:
                 console.print(
-                    f"[green]✓[/green] LLM Endpoint: [green]reachable[/green] "
-                    f"({host}:{port})"
+                    f"[green]✓[/green] LLM Endpoint: [green]reachable[/green] ({host}:{port})"
                 )
         else:
             if not check:
@@ -629,12 +637,11 @@ async def _do_health(check: bool = False) -> None:
     except OSError as exc:
         has_failure = True
         if not check:
-            console.print(
-                f"[red]✗[/red] LLM Endpoint: [red]unreachable[/red] "
-                f"({base_url}): {exc}"
-            )
+            console.print(f"[red]✗[/red] LLM Endpoint: [red]unreachable[/red] ({base_url}): {exc}")
         else:
-            logger.warning("Health check — LLM endpoint unreachable", base_url=base_url, error=str(exc))
+            logger.warning(
+                "Health check — LLM endpoint unreachable", base_url=base_url, error=str(exc)
+            )
     except TimeoutError:
         has_failure = True
         if not check:
@@ -654,9 +661,7 @@ async def _do_health(check: bool = False) -> None:
     except Exception as exc:
         has_failure = True
         if not check:
-            console.print(
-                f"[red]✗[/red] Database: [red]FAILED[/red] — {exc}"
-            )
+            console.print(f"[red]✗[/red] Database: [red]FAILED[/red] — {exc}")
         else:
             logger.warning("Health check — database connection failed", error=str(exc))
 
@@ -704,7 +709,9 @@ def _write_dotenv(key: str, value: str, path: str = ".env") -> None:
     if not env_path.exists() and example_path.exists():
         env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-    lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True) if env_path.exists() else []
+    lines = (
+        env_path.read_text(encoding="utf-8").splitlines(keepends=True) if env_path.exists() else []
+    )
     new_line = f"{key}={value}\n"
     found = False
 
@@ -719,6 +726,7 @@ def _write_dotenv(key: str, value: str, path: str = ".env") -> None:
         lines.append(new_line)
 
     env_path.write_text("".join(lines), encoding="utf-8")
+    env_path.chmod(0o600)
 
 
 @main.command()
@@ -754,8 +762,14 @@ def quickstart() -> None:
 
     if not api_key or api_key.strip() == "":
         click.echo("")
-        click.echo("  [ERROR] An LLM API key is required to qualify leads and generate outreach drafts.", err=True)
-        click.echo("  Get a free key at https://opencode.ai and run 'freelance-lead-gen quickstart' again.", err=True)
+        click.echo(
+            "  [ERROR] An LLM API key is required to qualify leads and generate outreach drafts.",
+            err=True,
+        )
+        click.echo(
+            "  Get a free key at https://opencode.ai and run 'freelance-lead-gen quickstart' again.",
+            err=True,
+        )
         sys.exit(1)
 
     api_key = api_key.strip()
