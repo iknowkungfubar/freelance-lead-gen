@@ -15,6 +15,34 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+
+# ── Detection constants (used by BasePlatformExtractor) ────────────────────────
+
+
+_LOGIN_REDIRECT_INDICATORS: list[str] = [
+    "/login",
+    "/signin",
+    "/auth",
+    "account/login",
+    "account/signin",
+    "login-page",
+]
+"""URL substrings that indicate a redirect to a login/authentication page."""
+
+_CAPTCHA_INDICATORS: list[str] = [
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "turnstile",
+    "cf-turnstile",
+    "challenge",
+    "verify you are human",
+    "security check",
+    "cf-challenge",
+]
+"""Text or URL substrings that indicate a CAPTCHA or challenge page."""
+
+
 # ── RawLead dataclass ──────────────────────────────────────────────────────────
 
 
