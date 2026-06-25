@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="Freelance Lead Gen Banner" width="800">
+</p>
+
 # Freelance Lead Gen
 
 > Agentic freelance opportunity discovery, qualification, and outreach preparation.
