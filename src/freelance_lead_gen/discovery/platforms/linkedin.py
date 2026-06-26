@@ -63,12 +63,8 @@ _LINKEDIN_POSTED_DATE_SELECTOR: str = (
     "time.job-card-container__listed-state, time.job-search-card__listdate, "
     "span.job-card-container__listed-state"
 )
-_LINKEDIN_EASY_APPLY_SELECTOR: str = (
-    "span:has-text('Easy Apply'), button:has-text('Easy Apply')"
-)
-_LINKEDIN_NEXT_BUTTON: str = (
-    "button[aria-label='Next'], button.jobs-search-pagination__next-button"
-)
+_LINKEDIN_EASY_APPLY_SELECTOR: str = "span:has-text('Easy Apply'), button:has-text('Easy Apply')"
+_LINKEDIN_NEXT_BUTTON: str = "button[aria-label='Next'], button.jobs-search-pagination__next-button"
 _LINKEDIN_SEARCH_URL_TEMPLATE: str = (
     "https://www.linkedin.com/jobs/search/?"
     "keywords={query}&"
@@ -116,7 +112,8 @@ class LinkedInExtractor(BasePlatformExtractor):
     ) -> None:
         super().__init__(
             browser,
-            rate_limit=rate_limit or RateLimitConfig(
+            rate_limit=rate_limit
+            or RateLimitConfig(
                 min_delay=8.0,
                 max_delay=18.0,
                 jitter_factor=0.5,
@@ -127,7 +124,9 @@ class LinkedInExtractor(BasePlatformExtractor):
             credentials=credentials,
             settings=settings,
         )
-        self._email = email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        self._email = (
+            email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        )
         self._password = password or (credentials or {}).get("password")
 
     # ── BasePlatformExtractor interface ─────────────────────────────────
@@ -166,9 +165,7 @@ class LinkedInExtractor(BasePlatformExtractor):
         logger.info("linkedin.login_starting")
 
         try:
-            await self._browser.retry_navigation(
-                _LINKEDIN_LOGIN_URL, retries=2, timeout_ms=60_000
-            )
+            await self._browser.retry_navigation(_LINKEDIN_LOGIN_URL, retries=2, timeout_ms=60_000)
             await self._random_delay(2.0, 5.0)
 
             # CAPTCHA check.
@@ -371,9 +368,7 @@ class LinkedInExtractor(BasePlatformExtractor):
                 return False
 
             # Look for the nav bar (authenticated).
-            return await self._browser.is_element_visible(
-                "header.global-nav, nav.global-nav__nav"
-            )
+            return await self._browser.is_element_visible("header.global-nav, nav.global-nav__nav")
         except Exception:
             return False
 
@@ -453,4 +448,5 @@ class LinkedInExtractor(BasePlatformExtractor):
 
         # Fallback.
         import hashlib
+
         return hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:12]
