@@ -67,20 +67,17 @@ _UPWORK_BUDGET_SELECTOR: str = (
 """Selector for the budget / rate text."""
 
 _UPWORK_POSTED_DATE_SELECTOR: str = (
-    "span[data-test='job-pubished-date'], span[data-test='date'], "
-    "small[data-test='job-date']"
+    "span[data-test='job-pubished-date'], span[data-test='date'], small[data-test='job-date']"
 )
 """Selector for the posting date."""
 
 _UPWORK_SKILLS_SELECTOR: str = (
-    "div[data-test='job-tile-skills'] span, "
-    "div[data-test='skills'] span[data-test='skill']"
+    "div[data-test='job-tile-skills'] span, div[data-test='skills'] span[data-test='skill']"
 )
 """Selector for skill tags."""
 
 _UPWORK_NEXT_PAGE_SELECTOR: str = (
-    "a[data-test='pagination-next'], a[aria-label='Next'], "
-    "button[data-test='pagination-next']"
+    "a[data-test='pagination-next'], a[aria-label='Next'], button[data-test='pagination-next']"
 )
 """Selector for the "next page" pagination button."""
 
@@ -88,9 +85,7 @@ _UPWORK_NEXT_PAGE_SELECTOR: str = (
 
 _UPWORK_LOGIN_URL: str = "https://www.upwork.com/ab/account-security/login"
 _UPWORK_FIND_WORK_URL: str = "https://www.upwork.com/nx/find-work/"
-_UPWORK_SEARCH_URL_TEMPLATE: str = (
-    "https://www.upwork.com/nx/search/jobs/?q={query}&sort=recency"
-)
+_UPWORK_SEARCH_URL_TEMPLATE: str = "https://www.upwork.com/nx/search/jobs/?q={query}&sort=recency"
 
 
 # ── Extractor ──────────────────────────────────────────────────────────────────
@@ -128,7 +123,8 @@ class UpworkExtractor(BasePlatformExtractor):
     ) -> None:
         super().__init__(
             browser,
-            rate_limit=rate_limit or RateLimitConfig(
+            rate_limit=rate_limit
+            or RateLimitConfig(
                 min_delay=5.0,
                 max_delay=12.0,
                 jitter_factor=0.4,
@@ -139,7 +135,9 @@ class UpworkExtractor(BasePlatformExtractor):
             credentials=credentials,
             settings=settings,
         )
-        self._email = email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        self._email = (
+            email or (credentials or {}).get("email") or (credentials or {}).get("username")
+        )
         self._password = password or (credentials or {}).get("password")
 
     # ── BasePlatformExtractor interface ─────────────────────────────────
@@ -336,7 +334,9 @@ class UpworkExtractor(BasePlatformExtractor):
         skills = await self._parse_skills(card)
 
         # Budget parsing.
-        budget_min, budget_max = self._parse_upwork_budget(budget_text) if budget_text else (None, None)
+        budget_min, budget_max = (
+            self._parse_upwork_budget(budget_text) if budget_text else (None, None)
+        )
 
         # Extract job ID from URL.
         job_id = self._extract_upwork_job_id(url or title)
@@ -358,10 +358,7 @@ class UpworkExtractor(BasePlatformExtractor):
         """Extract skill labels from a job card."""
         try:
             skill_els = await card.query_selector_all(_UPWORK_SKILLS_SELECTOR)
-            return [
-                (await el.inner_text()).strip()
-                for el in skill_els
-            ]
+            return [(await el.inner_text()).strip() for el in skill_els]
         except Exception:
             return []
 

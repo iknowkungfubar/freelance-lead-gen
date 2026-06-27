@@ -1,4 +1,5 @@
 """Tests for the DiscoveryScheduler's reliability features."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -45,11 +46,13 @@ async def test_consecutive_failures_reset_on_success() -> None:
     A single success should zero out the failure counter, preventing a
     transient platform outage from causing permanent auto-disable.
     """
-    mock_fn = AsyncMock(side_effect=[
-        Exception("Fail 1"),
-        Exception("Fail 2"),
-        {"test_platform": {"found": 5, "new": 3, "failed": 0}},
-    ])
+    mock_fn = AsyncMock(
+        side_effect=[
+            Exception("Fail 1"),
+            Exception("Fail 2"),
+            {"test_platform": {"found": 5, "new": 3, "failed": 0}},
+        ]
+    )
     scheduler = DiscoveryScheduler(discovery_fn=mock_fn)
     scheduler.add_platform("test_platform", interval_minutes=999)
     ps = scheduler._platforms["test_platform"]

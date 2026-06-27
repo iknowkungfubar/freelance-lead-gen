@@ -136,9 +136,7 @@ class TestVerificationFull:
         the draft on them (only banned phrases block).
         """
         agent = VerificationAgent(settings=test_settings)
-        draft = _make_draft(
-            "I have general experience in software development."
-        )
+        draft = _make_draft("I have general experience in software development.")
 
         result = await agent.verify(draft, SAMPLE_OPP)
         assert any("skill" in i.lower() for i in result.issues)
@@ -147,9 +145,7 @@ class TestVerificationFull:
     async def test_verify_placeholder_detected(self, test_settings) -> None:
         """Verify drafts with placeholders have them detected in issues."""
         agent = VerificationAgent(settings=test_settings)
-        draft = _make_draft(
-            "I have experience with [your name] and [company] requirements."
-        )
+        draft = _make_draft("I have experience with [your name] and [company] requirements.")
 
         result = await agent.verify(draft, SAMPLE_OPP)
         assert any("placeholder" in i.lower() for i in result.issues)

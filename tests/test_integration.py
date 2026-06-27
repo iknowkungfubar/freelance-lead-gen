@@ -45,7 +45,8 @@ async def in_memory_db() -> AsyncSession:
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
 
     async with engine.begin() as conn:
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS opportunities (
                 id TEXT PRIMARY KEY,
                 platform TEXT NOT NULL,
@@ -68,8 +69,10 @@ async def in_memory_db() -> AsyncSession:
                 updated_at TEXT NOT NULL,
                 UNIQUE(platform, platform_job_id)
             )
-        """))
-        await conn.execute(text("""
+        """)
+        )
+        await conn.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS drafts (
                 id TEXT PRIMARY KEY,
                 opportunity_id TEXT NOT NULL,
@@ -82,10 +85,13 @@ async def in_memory_db() -> AsyncSession:
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (opportunity_id) REFERENCES opportunities(id)
             )
-        """))
+        """)
+        )
 
     factory = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False,
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
     )
     async with factory() as session:
         yield session
@@ -126,10 +132,16 @@ async def test_pipeline_discover_filter() -> None:
 
     qualified = [
         _make_opportunity(
-            "discover-1", title="Python Backend Lead", status=LeadStatus.QUALIFIED, score=85,
+            "discover-1",
+            title="Python Backend Lead",
+            status=LeadStatus.QUALIFIED,
+            score=85,
         ),
         _make_opportunity(
-            "discover-2", title="React Frontend Lead", status=LeadStatus.QUALIFIED, score=72,
+            "discover-2",
+            title="React Frontend Lead",
+            status=LeadStatus.QUALIFIED,
+            score=72,
         ),
     ]
 

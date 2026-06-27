@@ -67,7 +67,10 @@ def mock_all_agents() -> dict:
 
     mock_verification = AsyncMock(spec=VerificationAgent)
     mock_verification.verify.return_value = VerificationResult(
-        passed=True, score=85, word_count=50, paragraph_count=3,
+        passed=True,
+        score=85,
+        word_count=50,
+        paragraph_count=3,
     )
 
     mock_repo = AsyncMock(spec=OpportunityRepository)
@@ -326,9 +329,7 @@ class TestOrchestratorErrorRecovery:
         """
         _call_count: list[int] = [0]
 
-        async def _personalize_side_effect(
-            opp: LeadOpportunity, *args, **kwargs
-        ) -> OutboundDraft:
+        async def _personalize_side_effect(opp: LeadOpportunity, *args, **kwargs) -> OutboundDraft:
             _call_count[0] += 1
             if _call_count[0] == 1:
                 draft = OutboundDraft(opportunity_id=opp.id)
@@ -337,9 +338,7 @@ class TestOrchestratorErrorRecovery:
             msg = "Personalization failed"
             raise RuntimeError(msg)
 
-        mock_all_agents["personalization"].generate_draft.side_effect = (
-            _personalize_side_effect
-        )
+        mock_all_agents["personalization"].generate_draft.side_effect = _personalize_side_effect
         mock_all_agents["repository"].search.return_value = sample_qualified_opps
         mock_all_agents["filtering"].run.return_value = (
             sample_qualified_opps,

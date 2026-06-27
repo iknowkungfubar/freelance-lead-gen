@@ -996,17 +996,13 @@ class TestLinkedInCredentialParsing:
     @pytest.mark.asyncio
     async def test_linkedin_credentials_email_extracted(self, mock_browser) -> None:
         """Email in credentials dict is extracted to ``_email``."""
-        extractor = LinkedInExtractor(
-            browser=mock_browser, credentials={"email": "li@example.com"}
-        )
+        extractor = LinkedInExtractor(browser=mock_browser, credentials={"email": "li@example.com"})
         assert extractor._email == "li@example.com"
 
     @pytest.mark.asyncio
     async def test_linkedin_credentials_username_extracted(self, mock_browser) -> None:
         """Username alias in credentials is extracted to ``_email``."""
-        extractor = LinkedInExtractor(
-            browser=mock_browser, credentials={"username": "li_user"}
-        )
+        extractor = LinkedInExtractor(browser=mock_browser, credentials={"username": "li_user"})
         assert extractor._email == "li_user"
 
 
@@ -1246,7 +1242,8 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_extract_listings_dict_format(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """extract_listings returns a list of dicts with expected keys."""
 
@@ -1288,7 +1285,8 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_ensure_authenticated_login_raises(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When login() raises, _authenticated stays False and False is returned."""
         extractor = UpworkExtractor(browser=mock_browser)
@@ -1304,7 +1302,8 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_ensure_authenticated_already_authenticated(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When already authenticated, ensure_authenticated returns True immediately."""
         extractor = UpworkExtractor(browser=mock_browser)
@@ -1318,7 +1317,9 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_refresh_session_force_true(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """refresh_session(force=True) calls ensure_authenticated and returns its result."""
         sleeps: list[float] = []
@@ -1338,7 +1339,8 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_refresh_session_not_expired(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """refresh_session(force=False) with valid session returns _authenticated directly."""
         import time
@@ -1353,7 +1355,9 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_refresh_session_expired(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """refresh_session(force=False) with expired session re-authenticates."""
         sleeps: list[float] = []
@@ -1377,7 +1381,8 @@ class TestBaseExtractorAdvanced:
 
     @pytest.mark.asyncio
     async def test_type_like_human_empty_text(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """_type_like_human with empty text returns immediately (no browser call)."""
         extractor = UpworkExtractor(browser=mock_browser)
@@ -1397,7 +1402,9 @@ class TestUpworkSearch:
 
     @pytest.mark.asyncio
     async def test_upwork_search_with_query(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() replaces spaces with + and navigates to the search URL."""
         sleeps: list[float] = []
@@ -1413,17 +1420,16 @@ class TestUpworkSearch:
 
         await extractor.search("python developer")
 
-        expected_url = (
-            "https://www.upwork.com/nx/search/jobs/"
-            "?q=python+developer&sort=recency"
-        )
+        expected_url = "https://www.upwork.com/nx/search/jobs/?q=python+developer&sort=recency"
         mock_browser.retry_navigation.assert_awaited_once_with(
             expected_url, retries=2, timeout_ms=60_000
         )
 
     @pytest.mark.asyncio
     async def test_upwork_search_empty_query(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() with empty query navigates to the Find Work URL."""
         sleeps: list[float] = []
@@ -1446,7 +1452,9 @@ class TestUpworkSearch:
 
     @pytest.mark.asyncio
     async def test_upwork_search_special_chars(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() handles queries with special characters by joining with +."""
         sleeps: list[float] = []
@@ -1550,7 +1558,9 @@ class TestFreelancerSearch:
 
     @pytest.mark.asyncio
     async def test_freelancer_search_with_query(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() replaces spaces with + and navigates to the correct URL."""
         sleeps: list[float] = []
@@ -1566,8 +1576,7 @@ class TestFreelancerSearch:
         await extractor.search("data scientist")
 
         expected_url = (
-            "https://www.freelancer.com/search/projects/"
-            "?keyword=data+scientist&sort=date"
+            "https://www.freelancer.com/search/projects/?keyword=data+scientist&sort=date"
         )
         mock_browser.retry_navigation.assert_awaited_once_with(
             expected_url, retries=2, timeout_ms=60_000
@@ -1575,7 +1584,9 @@ class TestFreelancerSearch:
 
     @pytest.mark.asyncio
     async def test_freelancer_search_empty_query(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() with empty query still builds a valid URL."""
         sleeps: list[float] = []
@@ -1590,10 +1601,7 @@ class TestFreelancerSearch:
 
         await extractor.search("")
 
-        expected_url = (
-            "https://www.freelancer.com/search/projects/"
-            "?keyword=&sort=date"
-        )
+        expected_url = "https://www.freelancer.com/search/projects/?keyword=&sort=date"
         mock_browser.retry_navigation.assert_awaited_once_with(
             expected_url, retries=2, timeout_ms=60_000
         )
@@ -1604,7 +1612,9 @@ class TestFreelancerContestParsing:
 
     @pytest.mark.asyncio
     async def test_parse_results_with_contests(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """parse_results includes contests when include_contests=True.
 
@@ -1618,7 +1628,8 @@ class TestFreelancerContestParsing:
         monkeypatch.setattr("asyncio.sleep", _mock_sleep)
 
         extractor = FreelancerExtractor(
-            browser=mock_browser, include_contests=True,
+            browser=mock_browser,
+            include_contests=True,
         )
         # Replace _browser with a mock that has a properly configured page.
         # This avoids the spec-managed PropertyMock that creates new mocks on each access.
@@ -1636,7 +1647,9 @@ class TestFreelancerContestParsing:
 
     @pytest.mark.asyncio
     async def test_parse_results_without_contests(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """parse_results without contests only queries project cards."""
         sleeps: list[float] = []
@@ -1647,7 +1660,8 @@ class TestFreelancerContestParsing:
         monkeypatch.setattr("asyncio.sleep", _mock_sleep)
 
         extractor = FreelancerExtractor(
-            browser=mock_browser, include_contests=False,
+            browser=mock_browser,
+            include_contests=False,
         )
         page_mock = AsyncMock()
         page_mock.query_selector_all = AsyncMock(return_value=[])
@@ -1682,6 +1696,7 @@ class TestFreelancerContestParsing:
         budget_el.inner_text = AsyncMock(return_value="  $50-$200  ")
 
         card.query_selector = AsyncMock()
+
         # Return different elements for different selectors
         async def _mock_qs(sel: str) -> AsyncMock | None:
             mapping = {
@@ -1693,6 +1708,7 @@ class TestFreelancerContestParsing:
                 "strong[class*='budget'], span[class*='price']": budget_el,
             }
             return mapping.get(sel)  # type: ignore[arg-type]
+
         card.query_selector = _mock_qs
 
         extractor = FreelancerExtractor(browser=AsyncMock(spec=[]))  # type: ignore[arg-type]
@@ -1784,9 +1800,7 @@ class TestLinkedInGetElHref:
 
         card = AsyncMock()
         el = AsyncMock()
-        el.get_attribute = AsyncMock(
-            return_value="/jobs/view/12345678/?ref=search"
-        )
+        el.get_attribute = AsyncMock(return_value="/jobs/view/12345678/?ref=search")
         card.query_selector = AsyncMock(return_value=el)
 
         result = await LinkedInExtractor._get_el_href(card, "a.title")
@@ -1838,7 +1852,8 @@ class TestLinkedInJobIdEdgeCases:
         card = Mock()
         card.get_attribute.return_value = None
         result = LinkedInExtractor._extract_linkedin_job_id(
-            "https://www.linkedin.com/jobs/view/99999/", card,
+            "https://www.linkedin.com/jobs/view/99999/",
+            card,
         )
         assert result == "99999"
 
@@ -1848,7 +1863,9 @@ class TestLinkedInSearch:
 
     @pytest.mark.asyncio
     async def test_linkedin_search_with_query(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() encodes spaces as %20 and builds the correct URL."""
         sleeps: list[float] = []
@@ -1879,7 +1896,9 @@ class TestAggregatorSearch:
 
     @pytest.mark.asyncio
     async def test_aggregator_search_with_query(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """search() replaces spaces with + and navigates to the configured URL."""
         sleeps: list[float] = []
@@ -1902,7 +1921,9 @@ class TestAggregatorSearch:
 
     @pytest.mark.asyncio
     async def test_aggregator_search_custom_url(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Custom site_config search_url_template is used for navigation."""
         sleeps: list[float] = []
@@ -1916,7 +1937,8 @@ class TestAggregatorSearch:
             "search_url_template": "https://custom.dev/jobs?q={query}&sort=new",
         }
         extractor = AggregatorExtractor(
-            browser=mock_browser, site_config=config,
+            browser=mock_browser,
+            site_config=config,
         )
         extractor._random_scroll = AsyncMock()  # type: ignore[misc]
 
@@ -1993,7 +2015,8 @@ class TestAggregatorNextPage:
 
     @pytest.mark.asyncio
     async def test_next_page_no_paginate(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When paginate is False, next_page returns False immediately."""
         config = {"paginate": False}
@@ -2005,7 +2028,8 @@ class TestAggregatorNextPage:
 
     @pytest.mark.asyncio
     async def test_next_page_no_selector(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When next_page_selector is empty, next_page returns False."""
         config = {"paginate": True, "next_page_selector": ""}
@@ -2299,7 +2323,9 @@ class TestBaseDetectHelpers:
 
     @pytest.mark.asyncio
     async def test_type_like_human_with_text(
-        self, mock_browser: AsyncMock, monkeypatch: pytest.MonkeyPatch,
+        self,
+        mock_browser: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """_type_like_human with non-empty text calls type_text on the browser."""
         sleeps: list[float] = []
@@ -2321,7 +2347,8 @@ class TestBaseDetectHelpers:
 
     @pytest.mark.asyncio
     async def test_detect_login_redirect_same_url(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When current URL matches original, no redirect is detected."""
         page_mock = AsyncMock()
@@ -2339,7 +2366,8 @@ class TestBaseDetectHelpers:
 
     @pytest.mark.asyncio
     async def test_detect_login_redirect_to_login(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When current URL contains a login indicator, redirect is detected."""
         page_mock = AsyncMock()
@@ -2349,15 +2377,14 @@ class TestBaseDetectHelpers:
         extractor = UpworkExtractor(browser=mock_browser)
         extractor._browser = browser_mock  # type: ignore[assignment]
 
-        result = await extractor._detect_login_redirect(
-            "https://www.upwork.com/nx/find-work/"
-        )
+        result = await extractor._detect_login_redirect("https://www.upwork.com/nx/find-work/")
 
         assert result is True
 
     @pytest.mark.asyncio
     async def test_detect_login_redirect_exception(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When page.url access raises, redirect detection returns False."""
         page_mock = AsyncMock()
@@ -2367,15 +2394,14 @@ class TestBaseDetectHelpers:
         extractor = UpworkExtractor(browser=mock_browser)
         extractor._browser = browser_mock  # type: ignore[assignment]
 
-        result = await extractor._detect_login_redirect(
-            "https://www.upwork.com/nx/find-work/"
-        )
+        result = await extractor._detect_login_redirect("https://www.upwork.com/nx/find-work/")
 
         assert result is False
 
     @pytest.mark.asyncio
     async def test_detect_captcha_content_match(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When page content contains a CAPTCHA indicator, returns True."""
         page_mock = AsyncMock()
@@ -2394,7 +2420,8 @@ class TestBaseDetectHelpers:
 
     @pytest.mark.asyncio
     async def test_detect_captcha_url_match(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When the page URL contains a CAPTCHA indicator, returns True."""
         page_mock = AsyncMock()
@@ -2411,7 +2438,8 @@ class TestBaseDetectHelpers:
 
     @pytest.mark.asyncio
     async def test_detect_captcha_no_match(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When no CAPTCHA indicators are found, returns False."""
         page_mock = AsyncMock()
@@ -2430,7 +2458,8 @@ class TestBaseDetectHelpers:
 
     @pytest.mark.asyncio
     async def test_detect_captcha_exception(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When page.content() raises, returns False."""
         page_mock = AsyncMock()
@@ -2456,7 +2485,8 @@ class TestLinkedInSecurityChallenge:
 
     @pytest.mark.asyncio
     async def test_detect_challenge_content_match(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When page content contains a security challenge indicator, returns True."""
         page_mock = AsyncMock()
@@ -2475,13 +2505,12 @@ class TestLinkedInSecurityChallenge:
 
     @pytest.mark.asyncio
     async def test_detect_challenge_url_match(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When the page URL contains challenge/checkpoint, returns True."""
         page_mock = AsyncMock()
-        page_mock.content = AsyncMock(
-            return_value="<html><body>Normal page</body></html>"
-        )
+        page_mock.content = AsyncMock(return_value="<html><body>Normal page</body></html>")
         page_mock.url = "https://www.linkedin.com/checkpoint/challenge/"
         browser_mock = AsyncMock()
         browser_mock.page = page_mock
@@ -2494,13 +2523,12 @@ class TestLinkedInSecurityChallenge:
 
     @pytest.mark.asyncio
     async def test_detect_challenge_no_match(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When no challenge indicators are found, returns False."""
         page_mock = AsyncMock()
-        page_mock.content = AsyncMock(
-            return_value="<html><body>Normal feed page</body></html>"
-        )
+        page_mock.content = AsyncMock(return_value="<html><body>Normal feed page</body></html>")
         page_mock.url = "https://www.linkedin.com/feed/"
         browser_mock = AsyncMock()
         browser_mock.page = page_mock
@@ -2513,7 +2541,8 @@ class TestLinkedInSecurityChallenge:
 
     @pytest.mark.asyncio
     async def test_detect_challenge_exception(
-        self, mock_browser: AsyncMock,
+        self,
+        mock_browser: AsyncMock,
     ) -> None:
         """When page.content() raises, returns False."""
         page_mock = AsyncMock()
@@ -2562,7 +2591,8 @@ class TestLinkedInSlowScroll:
 
     @pytest.mark.asyncio
     async def test_slow_scroll(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """_slow_scroll performs scrolls without error."""
         sleeps: list[float] = []

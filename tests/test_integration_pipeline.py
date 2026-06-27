@@ -261,10 +261,11 @@ class TestErrorRecovery:
 
         settings = _build_settings("http://127.0.0.1:1/v1")
         settings.llm.timeout_seconds = 2  # Fail fast.
-        settings.llm.max_retries = 0      # Don't retry — one quick failure.
+        settings.llm.max_retries = 0  # Don't retry — one quick failure.
         orchestrator = LeadGenOrchestrator(settings=settings)
 
         import asyncio
+
         report = await asyncio.wait_for(
             orchestrator.run_full_pipeline(
                 opportunities=sample_opportunities,

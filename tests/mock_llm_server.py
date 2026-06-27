@@ -11,40 +11,40 @@ from __future__ import annotations as _annotations
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 # ── Default response payloads ──────────────────────────────────────────────────
 
 # Qualification response (used by FilteringPipeline / _LLMClassification).
-_DEFAULT_QUALIFICATION_CONTENT = json.dumps({
-    "qualified": True,
-    "score": 85,
-    "skill_match_score": 90,
-    "budget_fit_score": 75,
-    "clarity_score": 80,
-    "reasoning": "Strong match: skills and experience align well with the target profile.",
-    "risks": [],
-})
+_DEFAULT_QUALIFICATION_CONTENT = json.dumps(
+    {
+        "qualified": True,
+        "score": 85,
+        "skill_match_score": 90,
+        "budget_fit_score": 75,
+        "clarity_score": 80,
+        "reasoning": "Strong match: skills and experience align well with the target profile.",
+        "risks": [],
+    }
+)
 
 # Draft-generation response (used by PersonalizationAgent / _DraftGeneration).
-_DEFAULT_DRAFT_CONTENT = json.dumps({
-    "subject": "AI proposal for your RAG pipeline",
-    "body": (
-        "Hi there,\n\n"
-        "I noticed your post about building a RAG pipeline and wanted to reach out. "
-        "I have been working with LangChain and vector databases for the past few "
-        "years, helping teams set up production-grade retrieval systems.\n\n"
-        "One project that seems relevant: I built a customer-support RAG system "
-        "that cut response times by 60%% using Pinecone and GPT-4. Happy to share "
-        "more details if that sounds useful.\n\n"
-        "What kind of data sources are you planning to index first?"
-    ),
-    "version": 1,
-    "platform_adaptations": [],
-})
+_DEFAULT_DRAFT_CONTENT = json.dumps(
+    {
+        "subject": "AI proposal for your RAG pipeline",
+        "body": (
+            "Hi there,\n\n"
+            "I noticed your post about building a RAG pipeline and wanted to reach out. "
+            "I have been working with LangChain and vector databases for the past few "
+            "years, helping teams set up production-grade retrieval systems.\n\n"
+            "One project that seems relevant: I built a customer-support RAG system "
+            "that cut response times by 60%% using Pinecone and GPT-4. Happy to share "
+            "more details if that sounds useful.\n\n"
+            "What kind of data sources are you planning to index first?"
+        ),
+        "version": 1,
+        "platform_adaptations": [],
+    }
+)
 
 _DEFAULT_CHAT_COMPLETION_BODY: dict = {
     "id": "chatcmpl-mock-0000000000000",
@@ -70,23 +70,27 @@ _DEFAULT_CHAT_COMPLETION_BODY: dict = {
     "system_fingerprint": None,
 }
 
-_RATE_LIMIT_BODY = json.dumps({
-    "error": {
-        "message": "Rate limit exceeded for test-key on model mock-model. Please retry after 0.1 seconds.",
-        "type": "rate_limit_error",
-        "code": "rate_limit",
-        "param": None,
+_RATE_LIMIT_BODY = json.dumps(
+    {
+        "error": {
+            "message": "Rate limit exceeded for test-key on model mock-model. Please retry after 0.1 seconds.",
+            "type": "rate_limit_error",
+            "code": "rate_limit",
+            "param": None,
+        }
     }
-}).encode()
+).encode()
 
-_SERVER_ERROR_BODY = json.dumps({
-    "error": {
-        "message": "The server encountered an internal error and was unable to complete your request.",
-        "type": "server_error",
-        "code": "internal_error",
-        "param": None,
+_SERVER_ERROR_BODY = json.dumps(
+    {
+        "error": {
+            "message": "The server encountered an internal error and was unable to complete your request.",
+            "type": "server_error",
+            "code": "internal_error",
+            "param": None,
+        }
     }
-}).encode()
+).encode()
 
 _NOT_FOUND_BODY = json.dumps({"error": "Not found"}).encode()
 
@@ -233,7 +237,9 @@ class MockLLMServer:
                 return
 
             try:
-                method, path, _ = request_line.decode("utf-8", errors="replace").strip().split(" ", 2)
+                method, path, _ = (
+                    request_line.decode("utf-8", errors="replace").strip().split(" ", 2)
+                )
             except ValueError:
                 return  # Malformed request line.
 
@@ -266,7 +272,7 @@ class MockLLMServer:
             else:
                 await self._send_response(writer, 404, _NOT_FOUND_BODY)
 
-        except (asyncio.TimeoutError, ConnectionError, BrokenPipeError):
+        except (TimeoutError, ConnectionError, BrokenPipeError):
             pass  # Client disconnected or timed out — nothing to do.
         except Exception:
             pass  # Swallow unexpected errors; the server must stay up.
