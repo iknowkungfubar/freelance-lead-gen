@@ -11,7 +11,7 @@ from __future__ import annotations as _annotations
 import contextlib
 import random
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ class BrowserFingerprint:
     locale: str
     webgl_vendor: str
     webgl_renderer: str
-    browser_type: Literal["chrome", "firefox"]
+    browser_type: Literal["chrome", "firefox"] = "chrome"
 
     def as_dict(self) -> dict[str, str | int]:
         """Return the fingerprint as a plain dictionary (JSON-serialisable)."""
@@ -222,7 +222,7 @@ def generate_fingerprint(
     )
 
 
-def fingerprint_to_playwright_kwargs(fp: BrowserFingerprint) -> dict:
+def fingerprint_to_playwright_kwargs(fp: BrowserFingerprint) -> dict[str, Any]:
     """Map a :class:`BrowserFingerprint` to Playwright ``new_context`` kwargs.
 
     This produces the *extra_http_headers*, *viewport*, *locale*, and
