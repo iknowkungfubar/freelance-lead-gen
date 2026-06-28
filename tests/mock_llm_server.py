@@ -11,10 +11,6 @@ from __future__ import annotations as _annotations
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 # ── Default response payloads ──────────────────────────────────────────────────
 
@@ -266,7 +262,7 @@ class MockLLMServer:
             else:
                 await self._send_response(writer, 404, _NOT_FOUND_BODY)
 
-        except (asyncio.TimeoutError, ConnectionError, BrokenPipeError):
+        except (TimeoutError, ConnectionError, BrokenPipeError):
             pass  # Client disconnected or timed out — nothing to do.
         except Exception:
             pass  # Swallow unexpected errors; the server must stay up.

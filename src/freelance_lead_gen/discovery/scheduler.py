@@ -216,14 +216,9 @@ class DiscoveryScheduler:
                 for name, ps in self._platforms.items()
             },
             "consecutive_failures": {
-                name: ps.consecutive_failures
-                for name, ps in self._platforms.items()
+                name: ps.consecutive_failures for name, ps in self._platforms.items()
             },
-            "auto_disabled": [
-                name
-                for name, ps in self._platforms.items()
-                if not ps.enabled
-            ],
+            "auto_disabled": [name for name, ps in self._platforms.items() if not ps.enabled],
             "last_cycle_at": max(
                 (ps.last_run for ps in self._platforms.values() if ps.last_run),
                 default=None,
@@ -476,12 +471,15 @@ class DiscoveryScheduler:
                 self._stats.total_failures += platform_result.get("failed", 0)
 
                 # Update per-platform stats.
-                ps = self._stats.platform_stats.setdefault(platform_name, {
-                    "runs": 0,
-                    "leads": 0,
-                    "new": 0,
-                    "failures": 0,
-                })
+                ps = self._stats.platform_stats.setdefault(
+                    platform_name,
+                    {
+                        "runs": 0,
+                        "leads": 0,
+                        "new": 0,
+                        "failures": 0,
+                    },
+                )
                 ps["runs"] += 1
                 ps["leads"] += leads_found
                 ps["new"] += leads_new
@@ -542,9 +540,7 @@ class DiscoveryScheduler:
             id=job_id,
             name=platform_name,
             replace_existing=True,
-            next_run_time=(
-                datetime.now(UTC) + timedelta(seconds=start_delay)
-            ),
+            next_run_time=(datetime.now(UTC) + timedelta(seconds=start_delay)),
         )
 
         logger.debug(
@@ -613,7 +609,7 @@ class DiscoveryScheduler:
     # ── Context manager ─────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def run(self) -> AsyncIterator["DiscoveryScheduler"]:
+    async def run(self) -> AsyncIterator[DiscoveryScheduler]:
         """Async context manager that starts the scheduler and cleans up on exit.
 
         Usage::
