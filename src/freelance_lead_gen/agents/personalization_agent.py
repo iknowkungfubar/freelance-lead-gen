@@ -177,7 +177,6 @@ class PersonalizationAgent:
         # Build the user content with opportunity + profile context.
         user_content = self._build_draft_context(opportunity, profile)
 
-
         last_error: str | None = None
 
         for attempt in range(1, max_retries_on_quality + 2):  # +1 for initial
@@ -304,10 +303,7 @@ class PersonalizationAgent:
             for i in range(count)
         ]
 
-        tasks = [
-            self.generate_draft(opportunity, profile, temperature=temp)
-            for temp in temps
-        ]
+        tasks = [self.generate_draft(opportunity, profile, temperature=temp) for temp in temps]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -456,9 +452,16 @@ class PersonalizationAgent:
 
         # Penalty: overly formal phrases.
         formal_markers = [
-            "furthermore", "moreover", "additionally", "consequently",
-            "nevertheless", "notwithstanding", "heretofore", "hereby",
-            "herewith", "aforesaid",
+            "furthermore",
+            "moreover",
+            "additionally",
+            "consequently",
+            "nevertheless",
+            "notwithstanding",
+            "heretofore",
+            "hereby",
+            "herewith",
+            "aforesaid",
         ]
         formal_count = sum(1 for m in formal_markers if m in text_lower)
         score -= formal_count * 5
@@ -514,16 +517,18 @@ class PersonalizationAgent:
         if opportunity.location:
             parts.append(f"Location: {opportunity.location}")
 
-        parts.extend([
-            "",
-            "## Job Description",
-            opportunity.description,
-            "",
-            "## Freelancer Profile",
-            f"Key Skills: {', '.join(profile.skills[:10])}",
-            f"Target Industries: {', '.join(profile.industries)}",
-            f"Experience Level: {profile.experience_level}",
-        ])
+        parts.extend(
+            [
+                "",
+                "## Job Description",
+                opportunity.description,
+                "",
+                "## Freelancer Profile",
+                f"Key Skills: {', '.join(profile.skills[:10])}",
+                f"Target Industries: {', '.join(profile.industries)}",
+                f"Experience Level: {profile.experience_level}",
+            ]
+        )
 
         return "\n".join(parts)
 
@@ -533,5 +538,3 @@ class PersonalizationAgent:
 
 class DraftGenerationError(RuntimeError):
     """Raised when outreach draft generation fails."""
-
-

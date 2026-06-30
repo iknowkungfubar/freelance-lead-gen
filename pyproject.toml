@@ -233,4 +233,5 @@ dev = [
     "pytest-cov>=6.1.1",
     "mypy>=1.15.0",
     "pip-audit>=2.9.0",
+    "ruff>=0.11.0",
 ]

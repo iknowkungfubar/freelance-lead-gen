@@ -281,9 +281,7 @@ class LLMClient:
         resolved_key: str = llm_cfg.api_key
         if not resolved_key or resolved_key == "***":
             logger.critical("LLM_API_KEY is not set")
-            raise ValueError(
-                "LLM_API_KEY is not set. Set it in .env or environment variables."
-            )
+            raise ValueError("LLM_API_KEY is not set. Set it in .env or environment variables.")
 
         self._client: AsyncOpenAI = AsyncOpenAI(
             api_key=resolved_key,
@@ -431,14 +429,14 @@ class LLMClient:
                     elif response_format == "json_object":
                         kwargs["response_format"] = {"type": "json_object"}
                         # Instruct the model to produce JSON.
-                        if not any(
-                            "json" in str(m.get("content", "")).lower() for m in messages
-                        ):
+                        if not any("json" in str(m.get("content", "")).lower() for m in messages):
                             messages = list(messages)
-                            messages.append({
-                                "role": "system",
-                                "content": "You MUST respond with valid JSON only.",
-                            })
+                            messages.append(
+                                {
+                                    "role": "system",
+                                    "content": "You MUST respond with valid JSON only.",
+                                }
+                            )
                             # Update kwargs so the modified messages are sent.
                             kwargs["messages"] = messages
 
@@ -515,7 +513,7 @@ class LLMClient:
                 last_error = exc
 
                 if attempt < self._max_retries:
-                    backoff = 2.0 ** attempt + 1.0
+                    backoff = 2.0**attempt + 1.0
                     logger.warning(
                         "llm.timeout",
                         label=label,
@@ -536,7 +534,7 @@ class LLMClient:
                 last_error = exc
 
                 if attempt < self._max_retries:
-                    backoff = 3.0 ** attempt
+                    backoff = 3.0**attempt
                     logger.warning(
                         "llm.server_error",
                         label=label,
@@ -557,7 +555,7 @@ class LLMClient:
                 last_error = exc
 
                 if attempt < self._max_retries:
-                    backoff = 2.0 ** attempt
+                    backoff = 2.0**attempt
                     logger.warning(
                         "llm.api_error",
                         label=label,
@@ -648,7 +646,7 @@ class LLMClient:
                 self._stats["total_retries"] += 1
                 last_error = exc
                 if attempt < self._max_retries:
-                    backoff = 2.0 ** attempt + 1.0
+                    backoff = 2.0**attempt + 1.0
                     logger.warning(
                         "llm.stream_timeout",
                         label=label,
@@ -667,7 +665,7 @@ class LLMClient:
                 self._stats["total_retries"] += 1
                 last_error = exc
                 if attempt < self._max_retries:
-                    backoff = 3.0 ** attempt
+                    backoff = 3.0**attempt
                     logger.warning(
                         "llm.stream_server_error",
                         label=label,
@@ -686,7 +684,7 @@ class LLMClient:
                 self._stats["total_retries"] += 1
                 last_error = exc
                 if attempt < self._max_retries:
-                    backoff = 2.0 ** attempt
+                    backoff = 2.0**attempt
                     logger.warning(
                         "llm.stream_api_error",
                         label=label,
@@ -756,10 +754,7 @@ class LLMClient:
         except (json.JSONDecodeError, TypeError):
             pass
 
-        raise LLMError(
-            f"Failed to parse structured output. "
-            f"Content preview: {content[:200]}..."
-        )
+        raise LLMError(f"Failed to parse structured output. Content preview: {content[:200]}...")
 
     # ── Convenience methods ──────────────────────────────────────────────
 
@@ -844,9 +839,7 @@ class LLMClient:
             label="structured_classify",
         )
         if not isinstance(result, dict):
-            raise ValueError(
-                f"Expected dict from structured_classify, got {type(result).__name__}"
-            )
+            raise ValueError(f"Expected dict from structured_classify, got {type(result).__name__}")
         return result
 
     def reset_spend(self) -> None:
