@@ -124,7 +124,9 @@ def configure_logging(*, level: str | None = None, json: bool | None = None) -> 
     # third-party libraries using plain ``logging`` also respect our level.
     import logging as stdlib_logging
 
-    stdlib_logging.basicConfig(handlers=[], force=True, level=getattr(stdlib_logging, level, stdlib_logging.INFO))
+    stdlib_logging.basicConfig(
+        handlers=[], force=True, level=getattr(stdlib_logging, level, stdlib_logging.INFO)
+    )
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

@@ -103,9 +103,7 @@ class RawLead:
     extra: dict[str, Any] = field(default_factory=dict)
     """Extra fields extracted via extra_selectors (free-form key/value pairs)."""
 
-    extracted_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    extracted_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     """ISO-format timestamp of extraction."""
 
 
@@ -141,5 +139,3 @@ class Extractor(abc.ABC):
 
         """
         ...
-
-
