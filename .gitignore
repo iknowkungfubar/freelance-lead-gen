@@ -15,6 +15,9 @@ CLAUDE.md
 AGENTS.md
 agent_instructions.md
 AI_CONTEXT.md
+CONTEXT.md
+SKILL.md
+MEMORY.md
 
 # --- Environment & Secrets ---
 .env
