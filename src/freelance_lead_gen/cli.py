@@ -700,7 +700,12 @@ def _write_dotenv(key: str, value: str, path: str = ".env") -> None:
     If *key* already appears in the file its value is replaced; otherwise
     the line is appended.  The file always ends with a trailing newline.
     """
+    import os
     from pathlib import Path
+
+    # ponytail: prefer env var over file storage for secrets
+    if os.environ.get(key):
+        return
 
     env_path = Path(path)
 

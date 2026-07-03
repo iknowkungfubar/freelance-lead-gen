@@ -9,6 +9,7 @@ real ``ManagedBrowser`` or network access.
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
+from urllib.parse import urlparse
 
 import pytest
 
@@ -316,8 +317,9 @@ class TestAggregatorUrlBuilding:
         """Default config uses example.com with a ``q`` parameter."""
         extractor = AggregatorExtractor(browser=mock_browser)
         url = extractor.search_url_template.format(query="python")
+        parsed = urlparse(url)
 
-        assert "example.com" in url
+        assert parsed.hostname == "example.com"
         assert "q=python" in url
 
     @pytest.mark.asyncio
