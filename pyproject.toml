@@ -218,6 +218,7 @@ omit = [
 branch = true
 
 [tool.coverage.report]
+fail_under = 20
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
