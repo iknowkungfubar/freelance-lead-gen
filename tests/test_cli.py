@@ -46,3 +46,28 @@ def test_cli_stats_no_db() -> None:
     runner = CliRunner()
     result = runner.invoke(main, ["stats"])
     assert result.exit_code == 0
+
+
+def test_safe_error_sanitises_exception(capsys) -> None:
+    """Verify _safe_error prints a sanitised message to stderr.
+
+    The error boundary must never leak exception details (API keys,
+    file paths, internal variable values) to the user's terminal.
+    Full exception details go to the structured log instead.
+    """
+    from freelance_lead_gen.cli import _safe_error
+
+    msg = "pipeline error occurred"
+    exc = ValueError("API key was 'sk-abc-12345' and the request timed out")
+
+    _safe_error(msg, exc)
+
+    captured = capsys.readouterr()
+    # Sanitised message is printed to stderr
+    assert "An unexpected error occurred" in captured.err
+    assert "check the logs for details" in captured.err
+    # Sensitive exception details are NOT leaked to stderr (the user-facing stream)
+    assert "API key" not in captured.err
+    assert "sk-abc" not in captured.err
+    # stdout may contain structured logs (structlog default output when
+    # not configured with a processor) — that's expected in test context
