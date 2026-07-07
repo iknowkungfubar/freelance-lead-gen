@@ -1,18 +1,10 @@
-"""Managed browser — wraps Playwright with stealth, session persistence, and jitter.
-
-Provides a :class:`ManagedBrowser` that initialises Playwright with anti-detection
-configuration, persistent user-data directories, proxy support, and human-like
-behavioural jittering.  The browser lifecycle is managed through async context
-managers and explicit ``start()`` / ``stop()`` calls.
-"""
+"""Managed browser client - wraps Playwright with stealth, session persistence, and jitter."""
 
 from __future__ import annotations as _annotations
 
 import asyncio
 import random
 import time
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Self
 
@@ -30,66 +22,17 @@ from freelance_lead_gen.utils.fingerprint import (
     generate_fingerprint,
 )
 
+from ._config import (
+    _DEFAULT_JITTER_MEAN,
+    _DEFAULT_JITTER_SIGMA,
+    _MIN_JITTER,
+    _MAX_JITTER,
+    _RETRY_CODES,
+)
+from ._exceptions import BrowserError, BrowserNotStartedError, NavigationTimeoutError
+from ._models import BrowserSessionInfo
+
 logger = structlog.get_logger(__name__)
-
-# ── Behavioural jitter constants ───────────────────────────────────────────────
-
-_DEFAULT_JITTER_MEAN: float = 3.0
-"""Mean delay (seconds) between automated actions."""
-
-_DEFAULT_JITTER_SIGMA: float = 1.2
-"""Standard deviation of the Gaussian delay."""
-
-_MIN_JITTER: float = 0.3
-"""Floor for any individual delay — never go faster than this."""
-
-_MAX_JITTER: float = 12.0
-"""Ceiling for any individual delay — cap for safety."""
-
-_RETRY_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
-"""HTTP status codes that trigger a retry."""
-
-
-# ── Dataclasses ────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class BrowserSessionInfo:
-    """Tracking info for an active browser session."""
-
-    fingerprint: BrowserFingerprint
-    """The fingerprint used for this session."""
-    started_at: float
-    """Unix timestamp when this session started."""
-    pages_visited: int = 0
-    """Counter of navigation events in this session."""
-    errors: list[str] = field(default_factory=list)
-    """Errors encountered during the session."""
-
-
-# ── Exceptions ─────────────────────────────────────────────────────────────────
-
-
-class BrowserError(RuntimeError):
-    """Generic browser automation error."""
-
-    def __init__(self, message: str, original: Exception | None = None) -> None:
-        self.original = original
-        super().__init__(message)
-
-
-class BrowserNotStartedError(RuntimeError):
-    """Raised when an action is attempted before the browser is started."""
-
-    def __init__(self) -> None:
-        super().__init__("Browser is not started — call start() or use 'async with' first")
-
-
-class NavigationTimeoutError(BrowserError):
-    """Raised when a navigation or page action times out."""
-
-
-# ── Managed Browser ────────────────────────────────────────────────────────────
 
 
 class ManagedBrowser:
@@ -102,7 +45,7 @@ class ManagedBrowser:
     Parameters
     ----------
     headless : bool
-        Run in headless mode (default ``False`` — visible for debugging).
+        Run in headless mode (default ``False`` - visible for debugging).
     user_data_dir : str or Path
         Path to a persistent browser user-data directory.  Cookies and
         sessions survive across restarts.  Created if it does not exist.
@@ -119,14 +62,13 @@ class ManagedBrowser:
         Reuse a specific fingerprint.  ``None`` generates a fresh one.
     launch_args : list[str] or None
         Additional Chromium launch arguments.
-
     """
 
     _DEFAULT_LAUNCH_ARGS: ClassVar[list[str]] = [
         "--disable-blink-features=AutomationControlled",
     ]
 
-    # Unsafe launch args — only add when explicitly opted in.
+    # Unsafe launch args - only add when explicitly opted in.
     _UNSAFE_LAUNCH_ARGS: ClassVar[list[str]] = [
         "--no-sandbox",
         "--disable-web-security",
@@ -171,7 +113,7 @@ class ManagedBrowser:
         self._launch_args = launch_args or []
         self._log_unsafe_warning(self._launch_args)
 
-        # Runtime state — set when started.
+        # Runtime state - set when started.
         self._playwright: Playwright | None = None
         self._browser_instance: Any | None = None
         self._context: BrowserContext | None = None
@@ -182,7 +124,7 @@ class ManagedBrowser:
         # Default timeout.
         self._default_timeout_ms: int = 30_000
 
-    # ── Properties ──────────────────────────────────────────────────────
+    # -- Properties --
 
     @property
     def is_running(self) -> bool:
@@ -197,7 +139,6 @@ class ManagedBrowser:
         ------
         BrowserNotStartedError
             If the browser has not been started yet.
-
         """
         if self._page is None:
             raise BrowserNotStartedError
@@ -213,7 +154,7 @@ class ManagedBrowser:
         """Return the active session info, or *None* if not started."""
         return self._session_info
 
-    # ── Lifecycle ───────────────────────────────────────────────────────
+    # -- Lifecycle --
 
     async def start(self) -> None:
         """Initialise Playwright, create a persistent context, and open a page.
@@ -226,7 +167,6 @@ class ManagedBrowser:
         ------
         BrowserError
             If Playwright fails to launch or the context cannot be created.
-
         """
         if self.is_running or self._playwright is not None:
             logger.warning("browser.already_running")
@@ -295,7 +235,7 @@ class ManagedBrowser:
             await self.abort()
             raise BrowserError("Failed to open new page", original=exc) from exc
 
-        # ── Stealth & anti-detection ───────────────────────────────────
+        # -- Stealth & anti-detection --
         # Apply playwright-stealth patches (optional dependency).
         try:
             from playwright_stealth import Stealth  # type: ignore[import-untyped]
@@ -339,7 +279,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
         Safe to call multiple times.  Logs but does not raise on errors
         during teardown.  Cleans up resources in reverse order of creation:
-        page → context → browser instance → Playwright.
+        page to context to browser instance to Playwright.
         """
         if self._page is not None:
             try:
@@ -377,7 +317,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         logger.info("browser.stopped")
 
     async def abort(self) -> None:
-        """Forceful shutdown — close everything without graceful teardown.
+        """Forceful shutdown - close everything without graceful teardown.
 
         Useful when the browser is in an unknown or broken state.
         """
@@ -414,7 +354,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         self._session_info = None
         logger.info("browser.aborted", error_count=len(errors))
 
-    # ── Context manager ─────────────────────────────────────────────────
+    # -- Context manager --
 
     async def __aenter__(self) -> Self:
         """Start the browser and return self for use as an async context manager.
@@ -438,7 +378,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             logger.error("browser.context_exception", exc_info=(exc_type, exc_val, exc_tb))  # type: ignore[arg-type]
         await self.stop()
 
-    # ── Navigation ──────────────────────────────────────────────────────
+    # -- Navigation --
 
     async def navigate(
         self,
@@ -458,7 +398,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             Navigation timeout in milliseconds.  Falls back to the default
             (30 s) when ``None``.
         wait_until : str
-            Playwright ``wait_until`` value — ``"load"``, ``"domcontentloaded"``,
+            Playwright ``wait_until`` value - ``"load"``, ``"domcontentloaded"``,
             ``"networkidle"``.  Defaults to ``"load"``.
         referer : str or None
             Optional ``Referer`` header value.
@@ -474,7 +414,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             If navigation times out.
         BrowserError
             For other navigation failures.
-
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -503,7 +442,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
         return self.page
 
-    # ── Page interaction ────────────────────────────────────────────────
+    # -- Page interaction --
 
     async def extract_text(
         self,
@@ -524,7 +463,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         str
             The extracted text content (whitespace-stripped).
-
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -554,7 +492,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         str
             Element text content, or ``""`` if not found.
-
         """
         return await self.extract_text(selector, timeout_ms=timeout_ms)
 
@@ -585,7 +522,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         ------
         BrowserError
             If the click fails or the element is not found.
-
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -633,7 +569,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             Min/max delay (seconds) between individual keystrokes.
         clear_first : bool
             Clear the field before typing (default ``True``).
-
         """
         self._ensure_running()
 
@@ -671,11 +606,10 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         direction : str
             ``"down"``, ``"up"``, ``"left"``, or ``"right"``.
         amount : int or None
-            Pixels to scroll.  When ``None``, scrolls by viewport height × a
-            random factor (0.6–0.9).
+            Pixels to scroll.  When ``None``, scrolls by viewport height times a
+            random factor (0.6-0.9).
         smooth : bool
             Use smooth scrolling behaviour (default ``True``).
-
         """
         self._ensure_running()
 
@@ -709,7 +643,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         ----------
         selector : str
             CSS selector for the target element.
-
         """
         self._ensure_running()
         try:
@@ -718,7 +651,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         except Exception as exc:
             logger.warning("browser.scroll_into_view_error", selector=selector, error=str(exc))
 
-    # ── Screenshots ─────────────────────────────────────────────────────
+    # -- Screenshots --
 
     async def screenshot(
         self,
@@ -745,7 +678,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         ------
         BrowserError
             If the screenshot fails.
-
         """
         self._ensure_running()
         try:
@@ -760,7 +692,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         except Exception as exc:
             raise BrowserError(f"Screenshot failed: {exc}", original=exc) from exc
 
-    # ── Cookie / Session helpers ─────────────────────────────────────────
+    # -- Cookie / Session helpers --
 
     async def get_cookies(self) -> list[dict[str, Any]]:
         """Return all cookies for the current context.
@@ -769,7 +701,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         list of dict
             Each cookie dict contains ``name``, ``value``, ``domain``, etc.
-
         """
         self._ensure_running()
         return await self._context.cookies()  # type: ignore[union-attr]
@@ -783,7 +714,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         ----------
         cookies : list of dict
             Playwright-compatible cookie list.
-
         """
         self._ensure_running()
         await self._context.add_cookies(cookies)  # type: ignore[union-attr]
@@ -805,7 +735,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         ----------
         path : str or Path
             JSON file to write.
-
         """
         import json
 
@@ -838,7 +767,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         int
             Number of cookies restored.
-
         """
         import json
 
@@ -853,7 +781,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             await self.set_cookies(cookies)
         return len(cookies)
 
-    # ── Page state helpers ──────────────────────────────────────────────
+    # -- Page state helpers --
 
     async def get_url(self) -> str:
         """Return the current page URL."""
@@ -888,7 +816,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         bool
             *True* if the element reached the expected state, *False* on timeout.
-
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -909,7 +836,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         Returns
         -------
         bool
-
         """
         self._ensure_running()
         try:
@@ -929,12 +855,11 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         Any
             The return value of the script.
-
         """
         self._ensure_running()
         return await self.page.evaluate(script)
 
-    # ── HTTP helpers ────────────────────────────────────────────────────
+    # -- HTTP helpers --
 
     async def fetch_via_page(
         self,
@@ -964,7 +889,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         dict
             Parsed JSON response (or ``{"raw": text}`` if not JSON).
-
         """
         self._ensure_running()
         opts = {"method": method, "headers": headers or {}}
@@ -982,7 +906,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         except Exception as exc:
             raise BrowserError(f"fetch_via_page failed for {url}: {exc}", original=exc) from exc
 
-    # ── Wait / sleep helpers ────────────────────────────────────────────
+    # -- Wait / sleep helpers --
 
     async def wait(self, seconds: float = 1.0) -> None:
         """Sleep for *seconds*.  Wrapper around ``asyncio.sleep``."""
@@ -1002,7 +926,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             Maximum wait time.
         wait_until : str
             When to consider navigation complete.
-
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -1013,7 +936,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
                 f"Page did not reach '{wait_until}' state within {timeout}ms"
             ) from exc
 
-    # ── URL change detection ───────────────────────────────────────────
+    # -- URL change detection --
 
     async def get_redirect_url(self, *, timeout_ms: int | None = None) -> str:
         """Wait for any URL change and return the new URL.
@@ -1029,7 +952,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         -------
         str
             The redirect target URL.
-
         """
         self._ensure_running()
         timeout = timeout_ms or self._default_timeout_ms
@@ -1046,7 +968,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         except Exception:
             return self.page.url
 
-    # ── Retry helper ────────────────────────────────────────────────────
+    # -- Retry helper --
 
     async def retry_navigation(
         self,
@@ -1077,7 +999,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         ------
         BrowserError
             If all retries are exhausted.
-
         """
         last_error: Exception | None = None
         for attempt in range(1, retries + 1):
@@ -1102,7 +1023,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             original=last_error,
         )
 
-    # ── Internal helpers ────────────────────────────────────────────────
+    # -- Internal helpers --
 
     def _ensure_running(self) -> None:
         """Guard: raise if the browser is not ready."""
@@ -1117,7 +1038,7 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         )
         await asyncio.sleep(delay)
 
-    # ── Human-like mouse movement ───────────────────────────────────────
+    # -- Human-like mouse movement --
 
     async def human_mouse_move(
         self,
@@ -1136,7 +1057,6 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             Fractional horizontal offset into the element (0-1, default 0.5).
         offset_y : float
             Fractional vertical offset (0-1, default 0.5).
-
         """
         self._ensure_running()
         bbox = await self.page.locator(selector).bounding_box()
@@ -1158,23 +1078,3 @@ Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             await asyncio.sleep(random.uniform(0.01, 0.05))
 
         await self.page.mouse.move(target_x, target_y)
-
-
-# ── Convenience factory ────────────────────────────────────────────────────────
-
-
-@asynccontextmanager
-async def create_browser(**kwargs: Any) -> ManagedBrowser:
-    """Context-manager factory for a :class:`ManagedBrowser`.
-
-    Usage::
-
-        async with create_browser(headless=False) as browser:
-            await browser.navigate("https://upwork.com")
-    """
-    browser = ManagedBrowser(**kwargs)
-    try:
-        await browser.start()
-        yield browser
-    finally:
-        await browser.stop()
