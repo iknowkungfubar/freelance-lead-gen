@@ -112,28 +112,19 @@ class TestMigrations:
         async with engine.connect() as conn:
             # Check opportunities table.
             result = await conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='table' AND name='opportunities'"
-                )
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='opportunities'")
             )
             assert result.scalar_one_or_none() == "opportunities"
 
             # Check drafts table.
             result = await conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='table' AND name='drafts'"
-                )
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='drafts'")
             )
             assert result.scalar_one_or_none() == "drafts"
 
             # Check migrations registry.
             result = await conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='table' AND name='_migrations'"
-                )
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='_migrations'")
             )
             assert result.scalar_one_or_none() == "_migrations"
 
@@ -338,9 +329,7 @@ class TestRepositoryDrafts:
     """Tests for draft CRUD operations."""
 
     @pytest.mark.asyncio
-    async def test_create_and_get_draft(
-        self, repository: OpportunityRepository
-    ) -> None:
+    async def test_create_and_get_draft(self, repository: OpportunityRepository) -> None:
         """Verify creating and retrieving a draft."""
         opp = _make_opp("draft-opp-1")
         await repository.create(opp)
@@ -361,9 +350,7 @@ class TestRepositoryDrafts:
             await repository.get_draft_by_id("no-such-draft")
 
     @pytest.mark.asyncio
-    async def test_get_drafts_for_opportunity(
-        self, repository: OpportunityRepository
-    ) -> None:
+    async def test_get_drafts_for_opportunity(self, repository: OpportunityRepository) -> None:
         """Verify retrieving all drafts for an opportunity."""
         opp = _make_opp("draft-opp-2")
         await repository.create(opp)

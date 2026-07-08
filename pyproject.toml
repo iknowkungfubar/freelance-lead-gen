@@ -99,8 +99,6 @@ ignore = [
     "D401",   # First line of docstring should be in imperative mood
     "D404",   # First word of the docstring should not be "This"
     "D415",   # First line of docstring should end with a period
-    "ANN101", # Missing type annotation for `self` in method
-    "ANN102", # Missing type annotation for `cls` in classmethod
     "ANN201", # Missing return type annotation for public function
     "ANN202", # Missing return type annotation for private function
     "ANN204", # Missing return type annotation for special method

@@ -198,13 +198,9 @@ class TestLeadScoringResult:
     def test_score_bounds(self) -> None:
         """Verify score values outside 0-100 are rejected."""
         with pytest.raises(ValidationError):
-            LeadScoringResult(
-                qualified=True, score=150, reasoning="Out of bounds"
-            )
+            LeadScoringResult(qualified=True, score=150, reasoning="Out of bounds")
         with pytest.raises(ValidationError):
-            LeadScoringResult(
-                qualified=True, score=-5, reasoning="Negative"
-            )
+            LeadScoringResult(qualified=True, score=-5, reasoning="Negative")
 
     def test_default_scores(self) -> None:
         """Verify sub-scores default to 50 when not provided."""

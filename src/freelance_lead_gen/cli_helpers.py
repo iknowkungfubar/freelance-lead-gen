@@ -2,6 +2,7 @@
 
 Extracted from cli.py for independent testability.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,7 +34,7 @@ def validate_settings(*, require_llm_key: bool = True) -> list[str]:
         missing.append("LLM_API_KEY")
         return missing
 
-    with open(config_path) as f:
+    with Path(config_path).open() as f:
         config: dict[str, Any] = yaml.safe_load(f) or {}
         llm_key = config.get("llm", {}).get("api_key") or os.getenv("LLM_API_KEY")
         if require_llm_key and not llm_key:
@@ -55,7 +56,7 @@ def create_health_server(port: int = 8080) -> HTTPServer:
     """Create a health check HTTP server on the given port."""
     from functools import partial
 
-    server = HTTPServer(("0.0.0.0", port), partial(HealthHandler, AppConfig))
+    server = HTTPServer(("127.0.0.1", port), partial(HealthHandler, AppConfig))
     logger.info("Health server listening on port %d", port)
     return server
 

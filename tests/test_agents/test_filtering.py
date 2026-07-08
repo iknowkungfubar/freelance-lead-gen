@@ -141,15 +141,23 @@ class TestFilteringPipeline:
         # LLM score is validated 0-100 by the model; extreme values are
         # tested through the rule_score parameter which is unvalidated.
         llm = _LLMClassification(
-            qualified=True, score=100, skill_match_score=50,
-            budget_fit_score=50, clarity_score=50, reasoning="",
+            qualified=True,
+            score=100,
+            skill_match_score=50,
+            budget_fit_score=50,
+            clarity_score=50,
+            reasoning="",
         )
         blended = pipeline._blend_scores(rule_score=200, llm_result=llm)
         assert blended["score"] == 100
 
         llm_low = _LLMClassification(
-            qualified=True, score=0, skill_match_score=50,
-            budget_fit_score=50, clarity_score=50, reasoning="",
+            qualified=True,
+            score=0,
+            skill_match_score=50,
+            budget_fit_score=50,
+            clarity_score=50,
+            reasoning="",
         )
         blended_low = pipeline._blend_scores(rule_score=-50, llm_result=llm_low)
         assert blended_low["score"] == 0
