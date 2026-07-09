@@ -13,8 +13,6 @@ from typing import Any
 
 import yaml
 
-from freelance_lead_gen.config.settings import AppConfig
-
 logger = logging.getLogger(__name__)
 
 
@@ -54,9 +52,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def create_health_server(port: int = 8080) -> HTTPServer:
     """Create a health check HTTP server on the given port."""
-    from functools import partial
-
-    server = HTTPServer(("127.0.0.1", port), partial(HealthHandler, AppConfig))
+    server = HTTPServer(("127.0.0.1", port), HealthHandler)
     logger.info("Health server listening on port %d", port)
     return server
 
