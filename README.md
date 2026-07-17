@@ -2,6 +2,10 @@
   <img src="assets/banner.svg" alt="Freelance Lead Gen Banner" width="800">
 </p>
 
+[![CI](https://github.com/iknowkungfubar/freelance-lead-gen/actions/workflows/ci.yml/badge.svg)](https://github.com/iknowkungfubar/freelance-lead-gen/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/iknowkungfubar/freelance-lead-gen/actions/workflows/codeql.yml/badge.svg)](https://github.com/iknowkungfubar/freelance-lead-gen/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 # Freelance Lead Gen
 
 > Agentic freelance opportunity discovery, qualification, and outreach preparation.
