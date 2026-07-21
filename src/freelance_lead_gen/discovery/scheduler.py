@@ -20,7 +20,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
 
 logger = structlog.get_logger(__name__)
 
@@ -141,7 +141,7 @@ class DiscoveryScheduler:
 
         # Graceful shutdown signal handling.
         self._shutdown_event = asyncio.Event()
-        self._shutdown_task: asyncio.Task | None = None
+        self._shutdown_task: asyncio.Task[Any] | None = None
 
     # ── Properties ──────────────────────────────────────────────────────
 
@@ -613,7 +613,7 @@ class DiscoveryScheduler:
     # ── Context manager ─────────────────────────────────────────────────
 
     @asynccontextmanager
-    async def run(self):
+    async def run(self) -> AsyncIterator[Any]:
         """Async context manager that starts the scheduler and cleans up on exit.
 
         Usage::

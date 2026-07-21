@@ -135,10 +135,10 @@ class ScoreGauge(Widget):
     }
     """
 
-    score: int = reactive(0)
+    score: reactive[int] = reactive(0)
 
-    def __init__(self, score: int | None = None, **kwargs: object) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, score: int | None = None) -> None:
+        super().__init__()
         if score is not None:
             self.score = max(0, min(100, score))
 

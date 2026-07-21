@@ -28,7 +28,7 @@ def get_trace_id() -> str | None:
 def set_trace_id(trace_id: str | None) -> None:
     """Set the active trace ID for the current async context."""
     if trace_id is None:
-        trace_id_var.reset()
+        trace_id_var.set(None)
     else:
         trace_id_var.set(trace_id)
 
@@ -137,7 +137,7 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
         logger = get_logger(__name__)
         logger.info("opportunity.discovered", platform="upwork", title="...")
     """
-    return structlog.get_logger(name)
+    return structlog.get_logger(name)  # type: ignore[return-type]
 
 
 def bind_opportunity_context(

@@ -4,13 +4,16 @@ version = "0.1.0"
 description = "Agentic freelance lead generation system — automates discovery, qualification, and outreach preparation for technical freelance opportunities"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
 authors = [
     { name = "Josh Turin", email = "josh@turin.tech" },
 ]
-
-keywords = ["freelance", "lead-generation", "agentic", "browser-automation", "ai"]
-
+keywords = [
+    "freelance",
+    "lead-generation",
+    "agentic",
+    "browser-automation",
+    "ai",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -20,9 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business :: Scheduling",
 ]
-
 dependencies = [
-    # Core
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "structlog>=24.0",
@@ -30,31 +31,27 @@ dependencies = [
     "rich>=13.0",
     "httpx>=0.27",
     "pyyaml>=6.0",
-    # Browser automation
     "playwright>=1.40",
     "browser-use>=0.1.0",
     "playwright-stealth>=1.0",
-    # AI/LLM
     "openai>=1.0",
     "langchain>=0.3",
     "langchain-community>=0.3",
     "langchain-openai>=1.1.14",
-    # Database
     "sqlalchemy>=2.0",
     "aiosqlite>=0.20",
-    # Terminal UI
     "textual>=0.52",
     "textual-plotext>=1.0",
-    # Scheduling
     "apscheduler>=3.11.0",
-    # Utilities
     "python-dotenv>=1.0",
     "tiktoken>=0.7",
     "aiosqlite>=0.22.1",
-    # Security: transitive dependency version pins
     "pypdf>=5.6.0",
     "aiohttp>=3.11.0",
 ]
+
+[project.license]
+text = "MIT"
 
 [project.urls]
 homepage = "https://github.com/iknowkungfubar/freelance-lead-gen"
@@ -65,7 +62,9 @@ documentation = "https://github.com/iknowkungfubar/freelance-lead-gen/docs"
 freelance-lead-gen = "freelance_lead_gen.cli:main"
 
 [build-system]
-requires = ["hatchling>=1.21"]
+requires = [
+    "hatchling>=1.21",
+]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
@@ -84,92 +83,110 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["ALL"]
+select = [
+    "ALL",
+]
 ignore = [
-    # Pre-existing — will clean up over time
-    "D100",   # Missing docstring in public module
-    "D101",   # Missing docstring in public class
-    "D102",   # Missing docstring in public method
-    "D103",   # Missing docstring in public function
-    "D104",   # Missing docstring in public package
-    "D105",   # Missing docstring in magic method
-    "D107",   # Missing docstring in __init__
-    "D203",   # 1 blank line required before class docstring
-    "D213",   # Multi-line docstring summary should start at second line
-    "D401",   # First line of docstring should be in imperative mood
-    "D404",   # First word of the docstring should not be "This"
-    "D415",   # First line of docstring should end with a period
-    "ANN101", # Missing type annotation for `self` in method
-    "ANN102", # Missing type annotation for `cls` in classmethod
-    "ANN201", # Missing return type annotation for public function
-    "ANN202", # Missing return type annotation for private function
-    "ANN204", # Missing return type annotation for special method
-    "ANN401", # Dynamically typed expression
-    "COM812", # Trailing comma missing
-    "ISC001", # Implicit string concatenation
-    "S311",   # Standard pseudo-random generators
-    "T201",   # `print` found
-    "UP007",  # Use `X | Y` for type union
-    "EM101",  # Exception must not use a string literal
-    "EM102",  # Exception must not use an f-string literal
-    "TRY003", # Avoid specifying long messages outside exception class
-    "TRY301", # raise within try
-    "PLR2004", # Magic value used in comparison
-    "PLR0911", # Too many return statements
-    "PLR0912", # Too many branches
-    "PLR0913", # Too many arguments
-    "PLR0915", # Too many statements
-    "PLR5501", # Use elif instead of else if
-    "PLW1510", # subprocess.run without explicit check=
-    "SLF001",  # Private member accessed
-    "ERA001",  # Commented-out code
-    "TD002",   # Missing author in TODO
-    "TD003",   # Missing issue link in TODO
-    "FBT001",  # Boolean-typed positional argument
-    "FBT002",  # Boolean default value
-
-    # Project-specific style choices
-    "C408",    # Unnecessary dict/list/tuple call
-    "N812",    # lowercase imported as non lowercase
-    "N999",    # Invalid module name
-    "S101",    # Use of assert
-    "RET504",  # Unnecessary variable assignment before return
-
-    # Pre-existing bulk-suppressed (auto-generated code)
-    "BLE001", # blind-except — intentional patterns
-    "S110",   # try-except-pass — intentional in several places
-    "S112",   # try-except-continue — intentional in loops
-    "S608",   # hardcoded-sql-expression — SQLAlchemy expressions
-    "S105",   # hardcoded-password-string — model field names
-    "C901",   # complex-structure — refactor target
-    "E501",   # line-too-long — intentional for readability
-    "PLC0415", # import-outside-top-level — lazy-init pattern
-    "TRY300",  # try-consider-else — style choice
-    "ARG001",  # unused-function-argument — callback signatures
-    "ARG002",  # unused-method-argument — abstract base methods
-    "F821",    # undefined-name — false positives with mocks
-    "G201",    # logging-exc-info — intentional in some paths
-    "PERF401", # manual-list-comprehension — minor perf issue
-    "RUF001",  # ambiguous-unicode-character-string
-    "RUF002",  # ambiguous-unicode-character-docstring
-    "D205",    # missing-blank-line-after-summary
-    "E741",    # ambiguous-variable-name
-    "N802",    # invalid-function-name
-    "N818",    # error-suffix-on-exception-name
-    "SIM105",  # suppressible-exception
-    "TC001",   # typing-only-first-party-import — needed for Pydantic runtime
-    "TRY004",  # type-check-without-type-error — ValueError is acceptable here
-    "RUF006",  # asyncio-dangling-task — intentional fire-and-forget pattern
-    "RUF100",  # unused-noqa — harmless, auto-cleanup target
-    "PYI063",  # pep484-style-positional-only-parameter
-    "PT013",   # pytest-incorrect-pytest-import
-    "SIM117",  # multiple-with-statements
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D203",
+    "D213",
+    "D401",
+    "D404",
+    "D415",
+    "ANN101",
+    "ANN102",
+    "ANN201",
+    "ANN202",
+    "ANN204",
+    "ANN401",
+    "COM812",
+    "ISC001",
+    "S311",
+    "T201",
+    "UP007",
+    "EM101",
+    "EM102",
+    "TRY003",
+    "TRY301",
+    "PLR2004",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR5501",
+    "PLW1510",
+    "SLF001",
+    "ERA001",
+    "TD002",
+    "TD003",
+    "FBT001",
+    "FBT002",
+    "C408",
+    "N812",
+    "N999",
+    "S101",
+    "RET504",
+    "BLE001",
+    "S110",
+    "S112",
+    "S608",
+    "S105",
+    "C901",
+    "E501",
+    "PLC0415",
+    "TRY300",
+    "ARG001",
+    "ARG002",
+    "F821",
+    "G201",
+    "PERF401",
+    "RUF001",
+    "RUF002",
+    "D205",
+    "E741",
+    "N802",
+    "N818",
+    "SIM105",
+    "TC001",
+    "TRY004",
+    "RUF006",
+    "RUF100",
+    "PYI063",
+    "PT013",
+    "SIM117",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ANN", "D", "PLR", "SLF", "S", "N", "T201", "BLE001", "S110", "ARG001", "ARG002", "F821"]
-"alembic/**" = ["ANN", "D", "E501"]
-"conftest.py" = ["ANN", "D"]
+"tests/**" = [
+    "S101",
+    "ANN",
+    "D",
+    "PLR",
+    "SLF",
+    "S",
+    "N",
+    "T201",
+    "BLE001",
+    "S110",
+    "ARG001",
+    "ARG002",
+    "F821",
+]
+"alembic/**" = [
+    "ANN",
+    "D",
+    "E501",
+]
+"conftest.py" = [
+    "ANN",
+    "D",
+]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -178,8 +195,12 @@ line-ending = "lf"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
+testpaths = [
+    "tests",
+]
+python_files = [
+    "test_*.py",
+]
 asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -209,7 +230,9 @@ exclude = [
 ]
 
 [tool.coverage.run]
-source = ["freelance_lead_gen"]
+source = [
+    "freelance_lead_gen",
+]
 omit = [
     "tests/*",
     "alembic/*",
@@ -225,6 +248,7 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+fail_under = 20
 
 [dependency-groups]
 dev = [
