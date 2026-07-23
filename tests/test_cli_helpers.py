@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
 import yaml
 
 from freelance_lead_gen.cli_helpers import validate_settings, write_dotenv
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 # ── write_dotenv tests ─────────────────────────────────────────────────────────
 
