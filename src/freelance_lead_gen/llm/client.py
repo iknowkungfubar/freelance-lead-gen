@@ -1,7 +1,7 @@
 """LLM client wrapping OpenAI-compatible APIs with retry, rate limiting, and streaming.
 
 Provides a single :class:`LLMClient` that handles all interaction with LLM
-providers — OpenAI, OpenCode, local endpoints — through the OpenAI SDK.
+providers -- OpenAI, OpenCode, local endpoints -- through the OpenAI SDK.
 Clients are configurable via :class:`Settings` and are safe for concurrent
 async use.
 """
@@ -10,9 +10,6 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import json
-import re
-import time
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -30,216 +27,23 @@ from pydantic import BaseModel
 
 from freelance_lead_gen.config.settings import Settings, get_settings
 
+from .exceptions import (
+    LLMAuthenticationError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    SpendLimitExceeded,
+)
+from .parsing import extract_json_from_text, parse_retry_after
+from .rate_limiter import TokenBucket
+from .tokenizer import count_message_tokens
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 
 logger = structlog.get_logger(__name__)
-
-# ── Exceptions ─────────────────────────────────────────────────────────────────
-
-
-class LLMError(RuntimeError):
-    """Base exception for LLM client errors."""
-
-    def __init__(self, message: str, original: Exception | None = None) -> None:
-        self.original = original
-        super().__init__(message)
-
-
-class LLMAuthenticationError(LLMError):
-    """Raised when the API key is invalid or missing."""
-
-
-class LLMRateLimitError(LLMError):
-    """Raised when the API rate limit is exceeded."""
-
-
-class LLMTimeoutError(LLMError):
-    """Raised when a request times out."""
-
-
-class LLMContentFilterError(LLMError):
-    """Raised when the response was filtered by content moderation."""
-
-
-class SpendLimitExceeded(LLMError):
-    """Raised when the per-run token budget is exhausted.
-
-    Triggered when :attr:`LLMClient._total_tokens` reaches
-    :attr:`LLMClient._max_tokens_per_run`.  Call :meth:`LLMClient.reset_spend`
-    to clear the counter for a new pipeline run.
-    """
-
-
-# ── Token counting ─────────────────────────────────────────────────────────────
-
-
-def _estimate_tokens(text: str) -> int:
-    """Estimate token count for a string using a rough heuristic.
-
-    Uses ``len(text) // 4`` as a fast approximation when tiktoken is not
-    available or for models not in the tiktoken cache.  This is within
-    ~20% of actual token counts for English text.
-    """
-    return max(1, len(text) // 4)
-
-
-def _count_message_tokens(
-    messages: list[ChatCompletionMessageParam],
-    model: str = "gpt-4",
-) -> int:
-    """Count the total token usage for a list of chat messages.
-
-    Attempts to use **tiktoken** if available and a known model is found,
-    falling back to heuristic estimation otherwise.
-
-    Parameters
-    ----------
-    messages : list of ChatCompletionMessageParam
-        The messages to count.
-    model : str
-        The model identifier (used to select the tiktoken encoding).
-
-    Returns
-    -------
-    int
-        Estimated or exact token count.
-
-    """
-    try:
-        import tiktoken
-
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except KeyError:
-            encoding = tiktoken.get_encoding("cl100k_base")
-
-        tokens_per_message = 3  # <|start|>role<|content|>
-        tokens_per_name = 1
-
-        total = 0
-        for msg in messages:
-            total += tokens_per_message
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                # Multimodal content — flatten text parts.
-                text_parts = [
-                    p["text"] for p in content if isinstance(p, dict) and p.get("type") == "text"
-                ]
-                content = " ".join(text_parts)
-            total += len(encoding.encode(str(role)))
-            total += len(encoding.encode(str(content)))
-            if msg.get("name"):
-                total += tokens_per_name
-
-        total += 3  # Every reply is primed with <|start|>assistant<|content|>
-        return total
-    except ImportError:
-        # No tiktoken — rough estimate.
-        total = 0
-        for msg in messages:
-            for v in msg.values():
-                if isinstance(v, str):
-                    total += _estimate_tokens(v)
-                elif isinstance(v, list):
-                    for part in v:
-                        if isinstance(part, dict) and part.get("type") == "text":
-                            total += _estimate_tokens(part.get("text", ""))
-        return total
-
-
-# ── Rate limiter ───────────────────────────────────────────────────────────────
-
-
-@dataclass
-class _TokenBucket:
-    """Simple token-bucket rate limiter.
-
-    Maintains a bucket of *capacity* tokens, refilling at *rate* tokens per
-    second.  Each request consumes one token.
-    """
-
-    rate: float  # tokens per second
-    capacity: int  # burst capacity
-    _tokens: float = field(init=False)
-    _last_refill: float = field(init=False)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._tokens = float(self.capacity)
-        self._last_refill = time.monotonic()
-
-    async def acquire(self) -> float:
-        """Wait for a token and return the wait time in seconds."""
-        async with self._lock:
-            self._refill()
-            if self._tokens >= 1.0:
-                self._tokens -= 1.0
-                return 0.0
-            # Need to wait for the next token.
-            wait = (1.0 - self._tokens) / max(self.rate, 0.001)
-            self._tokens = 0.0
-            self._last_refill = time.monotonic()
-            return wait
-
-    def _refill(self) -> None:
-        now = time.monotonic()
-        elapsed = now - self._last_refill
-        self._tokens = min(float(self.capacity), self._tokens + elapsed * self.rate)
-        self._last_refill = now
-
-
-# ── Response parsing ───────────────────────────────────────────────────────────
-
-
-def _extract_json_from_text(text: str) -> str:
-    """Extract a JSON object or array from arbitrary text.
-
-    Handles markdown code fences, leading/trailing text, and backticks.
-
-    Parameters
-    ----------
-    text : str
-        Raw text that may contain JSON somewhere.
-
-    Returns
-    -------
-    str
-        The extracted JSON string, or the original text if no JSON-like
-        structure was found.
-
-    """
-    # Try fenced code blocks first.
-    match = re.search(
-        r"```(?:json)?\s*\n?(.+?)\n?```",
-        text,
-        re.DOTALL | re.IGNORECASE,
-    )
-    if match:
-        candidate = match.group(1).strip()
-        return candidate
-
-    # Try to find a top-level object or array.
-    for delim_char, other_char in (("{", "}"), ("[", "]")):
-        start = text.find(delim_char)
-        if start != -1:
-            # Find the matching closing delimiter.
-            depth = 0
-            for i in range(start, len(text)):
-                if text[i] == delim_char:
-                    depth += 1
-                elif text[i] == other_char:
-                    depth -= 1
-                    if depth == 0:
-                        return text[start : i + 1]
-
-    return text.strip()
-
-
-# ── LLM Client ─────────────────────────────────────────────────────────────────
 
 
 class LLMClient:
@@ -268,7 +72,6 @@ class LLMClient:
         self._settings = settings or get_settings()
         llm_cfg = self._settings.llm
 
-        # Build a shared httpx client for connection pooling.
         self._http_client: httpx.AsyncClient = httpx.AsyncClient(
             timeout=httpx.Timeout(llm_cfg.timeout_seconds),
             limits=httpx.Limits(
@@ -289,9 +92,8 @@ class LLMClient:
             http_client=self._http_client,
         )
 
-        # Rate limiter: default 30 RPM (tunable via env).
         max_rpm: int = 30
-        self._rate_limiter: _TokenBucket = _TokenBucket(
+        self._rate_limiter: TokenBucket = TokenBucket(
             rate=max_rpm / 60.0,
             capacity=max(1, max_rpm // 6),
         )
@@ -302,7 +104,6 @@ class LLMClient:
         self._max_tokens_per_run: int = 100_000
         self._total_tokens: int = 0
 
-        # Lifetime stats.
         self._stats: dict[str, Any] = {
             "total_requests": 0,
             "total_tokens": 0,
@@ -345,7 +146,7 @@ class LLMClient:
         model : str or None
             Model identifier.  Defaults to ``settings.llm.model``.
         temperature : float or None
-            Sampling temperature (0.0–2.0).  Defaults to 0.7.
+            Sampling temperature (0.0-2.0).  Defaults to 0.7.
         max_tokens : int or None
             Maximum tokens in the response.  ``None`` lets the model decide.
         response_format : type[BaseModel] or ``"json_object"`` or None
@@ -387,17 +188,14 @@ class LLMClient:
         if self._stats["started_at"] is None:
             self._stats["started_at"] = datetime.now(UTC).isoformat()
 
-        # Estimate input tokens for logging.
-        input_tokens = _count_message_tokens(messages, model=model_id)
+        input_tokens = count_message_tokens(messages, model=model_id)
 
-        # Rate-limit wait.
         wait_time = await self._rate_limiter.acquire()
         if wait_time > 0:
             logger.debug("llm.rate_limit_wait", seconds=round(wait_time, 2), label=label)
             if wait_time > 1.0:
                 await asyncio.sleep(wait_time)
 
-        # Spend-cap check — raise early if we've exhausted the budget.
         if self._total_tokens >= self._max_tokens_per_run:
             raise SpendLimitExceeded(
                 f"Token budget exhausted: {self._total_tokens} >= {self._max_tokens_per_run}. "
@@ -418,7 +216,6 @@ class LLMClient:
 
                 if response_format is not None:
                     if isinstance(response_format, type) and issubclass(response_format, BaseModel):
-                        # Use OpenAI's structured output (JSON mode with schema).
                         kwargs["response_format"] = {
                             "type": "json_schema",
                             "json_schema": {
@@ -428,7 +225,6 @@ class LLMClient:
                         }
                     elif response_format == "json_object":
                         kwargs["response_format"] = {"type": "json_object"}
-                        # Instruct the model to produce JSON.
                         if not any("json" in str(m.get("content", "")).lower() for m in messages):
                             messages = list(messages)
                             messages.append(
@@ -437,7 +233,6 @@ class LLMClient:
                                     "content": "You MUST respond with valid JSON only.",
                                 }
                             )
-                            # Update kwargs so the modified messages are sent.
                             kwargs["messages"] = messages
 
                 if stream:
@@ -455,7 +250,6 @@ class LLMClient:
 
                 self._stats["total_requests"] += 1
 
-                # Track token usage from the response.
                 if response.usage is not None:
                     total_tokens = response.usage.total_tokens or 0
                     self._stats["total_tokens"] += total_tokens
@@ -463,7 +257,6 @@ class LLMClient:
 
                 content = response.choices[0].message.content or ""
 
-                # Parse structured output if requested.
                 if response_format is not None:
                     return self._parse_structured(content, response_format)
 
@@ -490,7 +283,7 @@ class LLMClient:
                 self._stats["total_retries"] += 1
                 last_error = exc
 
-                retry_after = _parse_retry_after(str(exc))
+                retry_after = parse_retry_after(str(exc))
                 logger.warning(
                     "llm.rate_limited",
                     label=label,
@@ -571,7 +364,6 @@ class LLMClient:
                     original=exc,
                 ) from exc
 
-        # Shouldn't normally reach here, but just in case.
         raise LLMError(
             f"Request failed after {self._max_retries} attempts",
             original=last_error,
@@ -589,8 +381,7 @@ class LLMClient:
 
         Yields text chunks as they arrive from the API.  Retries on
         transient errors (rate limits, timeouts, server errors) up to
-        ``self._max_retries`` times.  Authentication errors are raised
-        immediately as non-recoverable.
+        ``self._max_retries`` times.
         """
         kwargs: dict[str, Any] = {
             "model": model,
@@ -626,7 +417,7 @@ class LLMClient:
                 self._stats["total_errors"] += 1
                 self._stats["total_retries"] += 1
                 last_error = exc
-                retry_after = _parse_retry_after(str(exc))
+                retry_after = parse_retry_after(str(exc))
                 logger.warning(
                     "llm.stream_rate_limited",
                     label=label,
@@ -699,7 +490,6 @@ class LLMClient:
                     original=exc,
                 ) from exc
 
-        # Shouldn't normally reach here, but just in case.
         raise LLMError(
             f"Stream request failed after {self._max_retries} attempts",
             original=last_error,
@@ -714,29 +504,10 @@ class LLMClient:
 
         Attempts JSON parsing directly, with fallbacks for markdown-fenced
         JSON and malformed responses.
-
-        Parameters
-        ----------
-        content : str
-            Raw LLM output.
-        response_format : type[BaseModel] or ``"json_object"``
-            Expected output structure.
-
-        Returns
-        -------
-        dict
-            Parsed structured data.
-
-        Raises
-        ------
-        LLMError
-            If the content cannot be parsed as valid JSON.
-
         """
-        # Try direct parse first.
         for attempt_fn in (
             lambda: json.loads(content),
-            lambda: json.loads(_extract_json_from_text(content)),
+            lambda: json.loads(extract_json_from_text(content)),
         ):
             try:
                 data = attempt_fn()
@@ -745,8 +516,7 @@ class LLMClient:
             except (json.JSONDecodeError, TypeError):
                 continue
 
-        # Last resort: try to find any JSON-like structure.
-        extracted = _extract_json_from_text(content)
+        extracted = extract_json_from_text(content)
         try:
             data = json.loads(extracted)
             if isinstance(data, dict):
@@ -770,23 +540,6 @@ class LLMClient:
 
         Uses a lower temperature (0.3) by default for more deterministic
         classification.
-
-        Parameters
-        ----------
-        system_prompt : str
-            The system prompt with instructions.
-        user_content : str
-            The user's input to classify.
-        model : str or None
-            Model override.
-        temperature : float
-            Sampling temperature (default 0.3).
-
-        Returns
-        -------
-        str
-            The model's response text.
-
         """
         return await self.chat_completion(
             [
@@ -807,27 +560,7 @@ class LLMClient:
         model: str | None = None,
         temperature: float = 0.3,
     ) -> dict[str, Any]:
-        """Shortcut for structured classification.
-
-        Parameters
-        ----------
-        system_prompt : str
-            System prompt.
-        user_content : str
-            User input.
-        response_model : type[BaseModel]
-            Pydantic model defining the expected output schema.
-        model : str or None
-            Model override.
-        temperature : float
-            Sampling temperature (default 0.3).
-
-        Returns
-        -------
-        dict
-            Parsed structured data matching the response model.
-
-        """
+        """Shortcut for structured classification."""
         result = await self.chat_completion(
             [
                 {"role": "system", "content": system_prompt},
@@ -843,61 +576,17 @@ class LLMClient:
         return result
 
     def reset_spend(self) -> None:
-        """Reset the per-run token counter.
-
-        Call this before starting a new pipeline run to clear the spend cap
-        counter accumulated from the previous run::
-
-            client.reset_spend()
-            result = await client.chat_completion(...)
-        """
+        """Reset the per-run token counter."""
         self._total_tokens = 0
         logger.debug("llm.spend_reset")
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
     async def close(self) -> None:
-        """Close the underlying HTTP client and release resources.
-
-        Call this when the client is no longer needed::
-
-            await client.close()
-        """
+        """Close the underlying HTTP client and release resources."""
         await self._http_client.aclose()
         logger.info(
             "llm.closed",
             total_requests=self._stats["total_requests"],
             total_tokens=self._stats["total_tokens"],
         )
-
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-
-def _parse_retry_after(error_text: str) -> float:
-    """Extract the retry-after duration from a rate-limit error message.
-
-    Parameters
-    ----------
-    error_text : str
-        The error message from the API.
-
-    Returns
-    -------
-    float
-        Seconds to wait, defaulting to 5.0 if parsing fails.
-
-    """
-    # Look for common patterns: "retry after X seconds", "RetryAfter: X", etc.
-    patterns = [
-        r"retry\s*(?:after|in)?\s*(\d+(?:\.\d+)?)\s*(?:seconds|secs|s)?",
-        r"Retry-After:\s*(\d+)",
-        r"RetryAfter\s*[:=]\s*(\d+)",
-        r"try\s*again\s*in\s*(\d+(?:\.\d+)?)\s*s",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, error_text, re.IGNORECASE)
-        if match:
-            return float(match.group(1))
-
-    return 5.0
