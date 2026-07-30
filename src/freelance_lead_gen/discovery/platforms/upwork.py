@@ -24,6 +24,9 @@ from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
 
 if TYPE_CHECKING:
+    from freelance_lead_gen.discovery.browser import ManagedBrowser
+
+if TYPE_CHECKING:
     from freelance_lead_gen.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
