@@ -137,7 +137,6 @@ freelance-lead-gen/
 │   └── development.md
 ├── .github/
 │   ├── workflows/ci.yml
-│   ├── workflows/codeql.yml
 │   └── dependabot.yml
 ├── pyproject.toml
 ├── README.md

@@ -203,11 +203,11 @@ exclude = [
     "build/",
     "tests/",
     "alembic/",
-    "*.pyi",
 ]
 
-[tool.mypy-overrides]
-module = "numpy"
+[[tool.mypy.overrides]]
+module = "numpy.*"
+follow_imports = "skip"
 ignore_missing_imports = true
 
 [tool.coverage.run]
