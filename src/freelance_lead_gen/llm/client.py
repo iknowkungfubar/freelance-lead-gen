@@ -204,7 +204,10 @@ class LLMClient:
 
         last_error: Exception | None = None
 
-        for attempt in range(1, self._max_retries + 1):
+        # max_retries=0 means 1 attempt (no retries), max_retries=1 means 2 attempts (1 retry), etc.
+        max_attempts = self._max_retries + 1
+
+        for attempt in range(1, max_attempts + 1):
             try:
                 kwargs: dict[str, Any] = {
                     "model": model_id,
@@ -393,7 +396,10 @@ class LLMClient:
             kwargs["max_tokens"] = max_tokens
 
         last_error: Exception | None = None
-        for attempt in range(1, self._max_retries + 1):
+        # max_retries=0 means 1 attempt (no retries), max_retries=1 means 2 attempts (1 retry), etc.
+        max_attempts = self._max_retries + 1
+
+        for attempt in range(1, max_attempts + 1):
             try:
                 stream = await self._client.chat.completions.create(**kwargs)
 

@@ -25,10 +25,10 @@ Platform authentication data (passwords, API keys, tokens) is stored in
 class PlatformCredentials(BaseModel):
     platform: Platform
     username: str | None
-    password: str | None        # ← auto-redacted
-    api_key: str | None         # ← auto-redacted
-    token: str | None           # ← auto-redacted
-    cookies: dict | None        # ← auto-redacted
+    password: str | None  # ← auto-redacted
+    api_key: str | None  # ← auto-redacted
+    token: str | None  # ← auto-redacted
+    cookies: dict | None  # ← auto-redacted
 ```
 
 **Secret redaction** is automatic via `@field_serializer`:

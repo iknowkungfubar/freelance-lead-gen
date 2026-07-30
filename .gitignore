@@ -130,6 +130,9 @@ nohup.out
 
 # --- Node (if any Playwright JS deps) ---
 node_modules/
+# Embedded git repos
+file-org-wiz/
+hermes-forge/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
