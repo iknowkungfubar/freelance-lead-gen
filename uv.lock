@@ -863,7 +863,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.1" },
-    { name = "aiosqlite", specifier = ">=0.20" },
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "apscheduler", specifier = ">=3.11.0" },
     { name = "browser-use", specifier = ">=0.1.0" },

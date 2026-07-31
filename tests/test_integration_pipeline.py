@@ -211,6 +211,7 @@ class TestErrorRecovery:
         await _insert_opportunities(sample_opportunities)
 
         settings = _build_settings(mock_llm_server.base_url)
+        settings.llm.max_retries = 0  # Don't retry — one quick failure.
         orchestrator = LeadGenOrchestrator(settings=settings)
 
         report = await orchestrator.run_full_pipeline(
@@ -236,6 +237,7 @@ class TestErrorRecovery:
         await _insert_opportunities(sample_opportunities)
 
         settings = _build_settings(mock_llm_server.base_url)
+        settings.llm.max_retries = 0  # Don't retry — one quick failure.
         orchestrator = LeadGenOrchestrator(settings=settings)
 
         report = await orchestrator.run_full_pipeline(

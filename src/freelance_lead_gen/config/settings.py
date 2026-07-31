@@ -176,7 +176,7 @@ class Settings(BaseSettings):
         """
         env_file = self.model_config.get("env_file")
         if env_file:
-            resolved = Path.cwd() / env_file
+            resolved = Path.cwd() / env_file  # type: ignore[operator]  # model_config.env_file is str|Path at runtime
             if not resolved.is_file():
                 import structlog
 

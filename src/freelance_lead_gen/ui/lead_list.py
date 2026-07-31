@@ -317,7 +317,7 @@ class LeadListScreen(Screen[None]):
         self.sort_key = key
         self.current_page = 1
 
-    def on_static_clicked(self, event: Static.Clicked) -> None:
+    def on_static_clicked(self, event: Static.Clicked) -> None:  # type: ignore[attr-defined]
         target = str(event.widget.id or "")
         if target.startswith("sort-"):
             key = target.replace("sort-", "")

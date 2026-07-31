@@ -23,6 +23,9 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+if TYPE_CHECKING:
+    from freelance_lead_gen.discovery.browser import ManagedBrowser
+
 from freelance_lead_gen.discovery.extractor import RawLead
 from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, RateLimitConfig
 

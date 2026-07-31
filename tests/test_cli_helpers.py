@@ -67,14 +67,18 @@ def test_write_dotenv_preserves_other_lines(tmp_path: Path) -> None:
 # ── validate_settings tests ────────────────────────────────────────────────────
 
 
-def test_validate_settings_missing_config_yaml(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_validate_settings_missing_config_yaml(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Returns missing config.yaml and LLM_API_KEY when no config file exists."""
     monkeypatch.chdir(tmp_path)
     missing = validate_settings(require_llm_key=True)
     assert "config.yaml" in missing
 
 
-def test_validate_settings_config_yaml_missing_llm_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_validate_settings_config_yaml_missing_llm_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Returns LLM_API_KEY missing when config.yaml has no api_key."""
     monkeypatch.chdir(tmp_path)
     config = {"llm": {"provider": "openai"}}
@@ -83,7 +87,9 @@ def test_validate_settings_config_yaml_missing_llm_key(monkeypatch: pytest.Monke
     assert "LLM_API_KEY" in missing
 
 
-def test_validate_settings_config_yaml_has_llm_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_validate_settings_config_yaml_has_llm_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Returns empty list when config.yaml has the LLM key."""
     monkeypatch.chdir(tmp_path)
     config = {"llm": {"api_key": "sk-real-key"}}
@@ -92,7 +98,9 @@ def test_validate_settings_config_yaml_has_llm_key(monkeypatch: pytest.MonkeyPat
     assert missing == []
 
 
-def test_validate_settings_does_not_require_llm_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_validate_settings_does_not_require_llm_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Returns empty list when require_llm_key=False even without an LLM key."""
     monkeypatch.chdir(tmp_path)
     config = {"llm": {"provider": "openai"}}

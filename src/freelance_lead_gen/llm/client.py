@@ -204,7 +204,10 @@ class LLMClient:
 
         last_error: Exception | None = None
 
-        for attempt in range(1, self._max_retries + 1):
+        # max_retries=0 means 1 attempt (no retries), max_retries=1 means 2 attempts (1 retry), etc.
+        max_attempts = self._max_retries + 1
+
+        for attempt in range(1, max_attempts + 1):
             try:
                 kwargs: dict[str, Any] = {
                     "model": model_id,
@@ -236,7 +239,7 @@ class LLMClient:
                             kwargs["messages"] = messages
 
                 if stream:
-                    return self._stream_completion(
+                    return self._stream_completion(  # type: ignore[return-value]
                         messages=messages,
                         model=model_id,
                         temperature=temp,
@@ -393,7 +396,10 @@ class LLMClient:
             kwargs["max_tokens"] = max_tokens
 
         last_error: Exception | None = None
-        for attempt in range(1, self._max_retries + 1):
+        # max_retries=0 means 1 attempt (no retries), max_retries=1 means 2 attempts (1 retry), etc.
+        max_attempts = self._max_retries + 1
+
+        for attempt in range(1, max_attempts + 1):
             try:
                 stream = await self._client.chat.completions.create(**kwargs)
 
@@ -510,7 +516,7 @@ class LLMClient:
             lambda: json.loads(extract_json_from_text(content)),
         ):
             try:
-                data = attempt_fn()
+                data = attempt_fn()  # type: ignore[no-untyped-call]
                 if isinstance(data, dict):
                     return data
             except (json.JSONDecodeError, TypeError):
@@ -541,7 +547,7 @@ class LLMClient:
         Uses a lower temperature (0.3) by default for more deterministic
         classification.
         """
-        return await self.chat_completion(
+        return await self.chat_completion(  # type: ignore[return-value]
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},

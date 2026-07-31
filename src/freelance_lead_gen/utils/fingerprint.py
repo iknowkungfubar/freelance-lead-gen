@@ -236,7 +236,7 @@ def generate_fingerprint(
         locale=loc,
         webgl_vendor=webgl["vendor"],
         webgl_renderer=webgl["renderer"],
-        browser_type=browser,
+        browser_type=browser,  # type: ignore[arg-type]  # narrowed from None at line 196
     )
 
 

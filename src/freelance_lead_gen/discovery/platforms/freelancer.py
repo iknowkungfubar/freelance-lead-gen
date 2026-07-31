@@ -23,6 +23,7 @@ from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor, R
 
 if TYPE_CHECKING:
     from freelance_lead_gen.config.settings import Settings
+    from freelance_lead_gen.discovery.browser import ManagedBrowser
 
 logger = structlog.get_logger(__name__)
 
