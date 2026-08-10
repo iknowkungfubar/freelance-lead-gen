@@ -392,7 +392,7 @@ class LeadGenTUI(App[None]):
         refresh shows current numbers.  The dashboard's own auto-refresh
         timer will pick up these changes within 30 seconds.
         """
-        async with suppress(Exception):
+        with suppress(Exception):
             await self._repository.get_stats()
 
     # ── Pipeline execution ──────────────────────────────────────────────
