@@ -282,6 +282,12 @@ class FilteringPipeline:
                 opp.notes = f"Rule-based score: {rule_score} ({tier})"
                 if opp.status == LeadStatus.QUALIFIED:
                     qualified.append(opp)
+                    if tier == "HIGH":
+                        report.high_count += 1
+                    else:
+                        report.potential_count += 1
+                else:
+                    report.low_count += 1
                 if persist:
                     await self._persist_result(opp, session=_shared_session)
 
@@ -323,24 +329,13 @@ class FilteringPipeline:
                 else:
                     opp.status = LeadStatus.QUALIFIED
                     qualified.append(opp)
+                    if tier == "HIGH":
+                        report.high_count += 1
+                    else:
+                        report.potential_count += 1
 
                 if persist:
                     await self._persist_result(opp, session=_shared_session)
-
-        # ── Tally report ─────────────────────────────────────────────────
-        for opp in opportunities:
-            if opp.status == LeadStatus.REJECTED:
-                tier = self._assign_tier(opp.score or 0) if opp.score else "LOW"
-                if opp.score == 0 or tier == "LOW":
-                    report.low_count += 1
-            elif opp.status == LeadStatus.QUALIFIED:
-                tier = self._assign_tier(opp.score or 50)
-                if tier == "HIGH":
-                    report.high_count += 1
-                elif tier == "POTENTIAL":
-                    report.potential_count += 1
-                else:
-                    report.low_count += 1
 
         report.completed_at = datetime.now(UTC)
 
@@ -534,6 +529,19 @@ class FilteringPipeline:
 
 # ── Input builder ──────────────────────────────────────────────────────────────
 
+# Long descriptions dominate the LLM prompt and burn tokens without adding
+# signal.  Truncate before sending.
+_MAX_DESCRIPTION_CHARS = 3_000
+
+
+def _truncate_description(description: str | None) -> str:
+    """Truncate a job description for LLM consumption."""
+    if not description:
+        return ""
+    if len(description) <= _MAX_DESCRIPTION_CHARS:
+        return description
+    return description[:_MAX_DESCRIPTION_CHARS] + "\n...[truncated]"
+
 
 def _build_classification_input(opportunity: LeadOpportunity) -> str:
     """Build the user-content string for LLM classification.
@@ -566,6 +574,6 @@ def _build_classification_input(opportunity: LeadOpportunity) -> str:
         parts.append(f"Skills: {', '.join(opportunity.skills)}")
     if opportunity.location:
         parts.append(f"Location: {opportunity.location}")
-    parts.append(f"---\n{opportunity.description}")
+    parts.append(f"---\n{_truncate_description(opportunity.description)}")
 
     return "\n".join(parts)

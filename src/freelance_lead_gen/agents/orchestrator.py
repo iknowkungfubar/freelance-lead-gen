@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
@@ -31,6 +31,7 @@ from freelance_lead_gen.agents.verification_agent import (
     VerificationResult,
 )
 from freelance_lead_gen.config.settings import Settings, get_settings
+from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
 from freelance_lead_gen.llm import LLMClient
 from freelance_lead_gen.models.opportunity import (
     LeadOpportunity,
@@ -39,9 +40,6 @@ from freelance_lead_gen.models.opportunity import (
 )
 from freelance_lead_gen.models.pipeline import PipelineState
 from freelance_lead_gen.storage.repository import OpportunityRepository
-
-if TYPE_CHECKING:
-    from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent
 
 logger = structlog.get_logger(__name__)
 
@@ -523,6 +521,11 @@ class LeadGenOrchestrator:
         """
         logger.info("orchestrator.initialising")
 
+        if self._discovery is None:
+            # Wire up a default discovery agent so the `pipeline` command
+            # works out of the box without passing one explicitly.
+            self._discovery = DiscoveryAgent(settings=self._settings)
+
         if self._discovery is not None:
             await self._discovery.initialize()
 
@@ -717,6 +720,8 @@ class LeadGenOrchestrator:
                     )
 
                     opp.status = LeadStatus.DRAFTED
+                    with contextlib.suppress(Exception):
+                        await self._repository.update_status(opp.id, LeadStatus.DRAFTED)
 
                     logger.debug(
                         "orchestrator.draft_created",
@@ -840,6 +845,10 @@ class LeadGenOrchestrator:
                     draft.approve()
                     with contextlib.suppress(Exception):
                         await self._repository.update_draft(draft)
+                    with contextlib.suppress(Exception):
+                        await self._repository.update_status(
+                            draft.opportunity_id, LeadStatus.REVIEWED
+                        )
                     report.total_reviewed += 1
         else:
             logger.info(

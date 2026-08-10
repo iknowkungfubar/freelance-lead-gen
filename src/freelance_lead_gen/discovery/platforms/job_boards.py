@@ -36,6 +36,23 @@ def _make_id(text: str) -> str:
     return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
 
+def _fix_mojibake(text: str) -> str:
+    """Reverse UTF-8-as-Latin-1 double encoding (RemoteOK API quirk).
+
+    The RemoteOK API serves text where real UTF-8 bytes were decoded as
+    Latin-1 and then re-encoded as UTF-8, producing artifacts like ``â€™``
+    for ``’``.  We detect the tell-tale C1 control characters
+    (U+0080–U+009F) that never legitimately appear in text, then round-trip
+    ``encode('latin-1') → decode('utf-8')`` to restore the original bytes.
+    """
+    if not text or not any(0x80 <= ord(c) <= 0x9F for c in text):
+        return text
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return text
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Remote OK
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -89,6 +106,14 @@ class RemoteOKExtractor(BasePlatformExtractor):
         return "remote_ok"
 
     @property
+    def requires_browser(self) -> bool:
+        return False
+
+    @property
+    def query_agnostic(self) -> bool:
+        return True
+
+    @property
     def search_url_template(self) -> str:
         return "https://remoteok.com/remote-{query}-jobs"
 
@@ -112,14 +137,21 @@ class RemoteOKExtractor(BasePlatformExtractor):
 
     # ── Override extraction to use HTTP instead of browser ─────────────
 
-    async def extract_listings_raw(self) -> list[RawLead]:
+    async def extract_listings_raw(self, query: str = "") -> list[RawLead]:
         """Fetch listings from Remote OK's JSON API.
+
+        Parameters
+        ----------
+        query : str
+            Ignored — Remote OK's API returns the full listing set.
+            Kept for interface compatibility with the base class.
 
         Returns
         -------
         list of RawLead
 
         """
+        del query  # The API is not query-scoped.
         logger.info("remote_ok.fetching_api")
 
         if self._http_client is None:
@@ -182,9 +214,9 @@ class RemoteOKExtractor(BasePlatformExtractor):
         return RawLead(
             platform="remote_ok",
             platform_job_id=_make_id(url or title),
-            title=title.strip()[:500],
-            company=company,
-            description=description.strip() if description else "",
+            title=_fix_mojibake(title.strip())[:500],
+            company=_fix_mojibake(company) if company else None,
+            description=_fix_mojibake(description.strip()) if description else "",
             url=url,
             posted_date=job.get("date"),
             budget_min=budget_min,
@@ -312,6 +344,14 @@ class YCWorkExtractor(BasePlatformExtractor):
         return "yc_work"
 
     @property
+    def requires_browser(self) -> bool:
+        return False
+
+    @property
+    def query_agnostic(self) -> bool:
+        return True
+
+    @property
     def search_url_template(self) -> str:
         return "https://www.workatastartup.com/jobs?search={query}"
 
@@ -331,14 +371,21 @@ class YCWorkExtractor(BasePlatformExtractor):
 
     # ── Override extraction to use HTTP ─────────────────────────────────
 
-    async def extract_listings_raw(self) -> list[RawLead]:
+    async def extract_listings_raw(self, query: str = "") -> list[RawLead]:
         """Fetch listings from YC Work's public API.
+
+        Parameters
+        ----------
+        query : str
+            Ignored — YC Work's API returns the full listing set.
+            Kept for interface compatibility with the base class.
 
         Returns
         -------
         list of RawLead
 
         """
+        del query  # The API is not query-scoped.
         logger.info("yc_work.fetching_api")
 
         if self._http_client is None:
@@ -409,9 +456,9 @@ class YCWorkExtractor(BasePlatformExtractor):
         return RawLead(
             platform="yc_work",
             platform_job_id=str(job.get("id", _make_id(url))),
-            title=title.strip()[:500],
-            company=company or None,
-            description=description.strip() if description else "",
+            title=_fix_mojibake(title.strip())[:500],
+            company=_fix_mojibake(company) if company else None,
+            description=_fix_mojibake(description.strip()) if description else "",
             url=url,
             posted_date=job.get("createdAt") or job.get("postedDate"),
             budget_min=float(salary_min) if salary_min else None,

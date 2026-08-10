@@ -75,6 +75,19 @@ class PersonalizationReport:
 
 # ── Personalization Agent ──────────────────────────────────────────────────────
 
+# Long job descriptions dominate the draft prompt without adding signal.
+# Truncate before sending to keep token usage (and cost) sane.
+_MAX_DESCRIPTION_CHARS = 3_000
+
+
+def _truncate_description(description: str | None) -> str:
+    """Truncate a job description for LLM consumption."""
+    if not description:
+        return ""
+    if len(description) <= _MAX_DESCRIPTION_CHARS:
+        return description
+    return description[:_MAX_DESCRIPTION_CHARS] + "\n...[truncated]"
+
 
 class PersonalizationAgent:
     """Generates personalised outreach drafts for qualified opportunities.
@@ -521,7 +534,7 @@ class PersonalizationAgent:
             [
                 "",
                 "## Job Description",
-                opportunity.description,
+                _truncate_description(opportunity.description),
                 "",
                 "## Freelancer Profile",
                 f"Key Skills: {', '.join(profile.skills[:10])}",
@@ -529,6 +542,8 @@ class PersonalizationAgent:
                 f"Experience Level: {profile.experience_level}",
             ]
         )
+
+        return "\n".join(parts)
 
         return "\n".join(parts)
 

@@ -87,6 +87,13 @@ def llm_client() -> LLMClient:
     connection pooling is still created (it doesn't make network requests on
     its own).
     """
+    # Ensure the ambient environment can't leak .env values into Settings()
+    # (e.g. LLM_MODEL set via load_dotenv by get_settings in other tests).
+    import os
+
+    for _key in [k for k in os.environ if k.startswith("LLM_")]:
+        del os.environ[_key]
+
     settings = Settings()
     settings.llm.api_key = "test-key-123"
     settings.llm.base_url = "http://test.local/v1"

@@ -92,10 +92,34 @@ class BasePlatformExtractor(abc.ABC):
 
         # Internal state.
         self._authenticated: bool = False
+        self._login_attempted: bool = False
         self._current_page: int = 0
         self._session_start: float | None = None
         self._last_request_time: float = 0.0
         """Unix timestamp of the last request (for rate-limit enforcement)."""
+
+    # ── Capability flags (overridable per platform) ─────────────────────
+
+    @property
+    def requires_browser(self) -> bool:
+        """Whether this platform needs a real browser session.
+
+        HTTP-only platforms (RemoteOK, YC Work) override this to *False*
+        so the discovery agent can skip launching a browser entirely when
+        only such platforms are enabled.
+        """
+        return True
+
+    @property
+    def query_agnostic(self) -> bool:
+        """Whether extraction ignores the search query.
+
+        Platforms whose API returns the *entire* listing set regardless of
+        the query (RemoteOK, YC Work) override this to *True* so the
+        discovery agent only fetches once per cycle instead of once per
+        configured search query.
+        """
+        return False
 
     # ── Abstract interface ──────────────────────────────────────────────
 
@@ -261,6 +285,11 @@ class BasePlatformExtractor(abc.ABC):
 
         Subclasses can override this to add session-cookie restoration.
 
+        A failed login is cached for the lifetime of the extractor so a
+        cycle that runs many search queries does not re-attempt (and
+        re-navigate) on every query.  Call :meth:`refresh_session` with
+        ``force=True`` to clear the cache and retry.
+
         Returns
         -------
         bool
@@ -270,6 +299,10 @@ class BasePlatformExtractor(abc.ABC):
         if self._authenticated:
             return True
 
+        if self._login_attempted:
+            return False
+
+        self._login_attempted = True
         try:
             self._authenticated = await self.login()
         except Exception as exc:
@@ -288,7 +321,8 @@ class BasePlatformExtractor(abc.ABC):
         Parameters
         ----------
         force : bool
-            If *True*, always reauthenticate regardless of session state.
+            If *True*, always reauthenticate regardless of session state
+            (clears any cached failed-login attempt first).
 
         Returns
         -------
@@ -296,6 +330,8 @@ class BasePlatformExtractor(abc.ABC):
             *True* if the session is valid after the check.
 
         """
+        if force:
+            self._login_attempted = False
         if force or self._session_expired():
             logger.info("platform.session_refresh", platform=self.platform_name)
             return await self.ensure_authenticated()

@@ -35,7 +35,7 @@ from .exceptions import (
     SpendLimitExceeded,
 )
 from .parsing import extract_json_from_text, parse_retry_after
-from .rate_limiter import TokenBucket
+from .rate_limiter import SlidingWindowLimiter
 from .tokenizer import count_message_tokens
 
 if TYPE_CHECKING:
@@ -90,13 +90,13 @@ class LLMClient:
             api_key=resolved_key,
             base_url=llm_cfg.base_url,
             http_client=self._http_client,
+            max_retries=0,  # Retries are handled by LLMClient itself.
         )
 
-        max_rpm: int = 30
-        self._rate_limiter: TokenBucket = TokenBucket(
-            rate=max_rpm / 60.0,
-            capacity=max(1, max_rpm // 6),
-        )
+        tpm_budget: int = llm_cfg.max_tokens_per_minute
+        self._tpm_budget: int = tpm_budget
+        self._estimated_output_tokens: int = llm_cfg.estimated_output_tokens
+        self._rate_limiter: SlidingWindowLimiter = SlidingWindowLimiter(tpm_budget)
 
         self._max_retries: int = llm_cfg.max_retries
         self._default_model: str = llm_cfg.model
@@ -190,12 +190,6 @@ class LLMClient:
 
         input_tokens = count_message_tokens(messages, model=model_id)
 
-        wait_time = await self._rate_limiter.acquire()
-        if wait_time > 0:
-            logger.debug("llm.rate_limit_wait", seconds=round(wait_time, 2), label=label)
-            if wait_time > 1.0:
-                await asyncio.sleep(wait_time)
-
         if self._total_tokens >= self._max_tokens_per_run:
             raise SpendLimitExceeded(
                 f"Token budget exhausted: {self._total_tokens} >= {self._max_tokens_per_run}. "
@@ -207,7 +201,22 @@ class LLMClient:
         # max_retries=0 means 1 attempt (no retries), max_retries=1 means 2 attempts (1 retry), etc.
         max_attempts = self._max_retries + 1
 
+        # Some providers/models don't support strict `json_schema` output.
+        # When the API rejects it, we transparently retry with `json_object`
+        # mode and parse the same Pydantic schema from the JSON payload.
+        json_schema_fallback = False
+
         for attempt in range(1, max_attempts + 1):
+            # Reserve budget for this attempt (input + an assumed output
+            # estimate).  Settled against actual usage on success, cancelled
+            # on failure so a broken provider doesn't stall the pipeline.
+            reserved_tokens = input_tokens + self._estimated_output_tokens
+            wait_time, reservation = await self._rate_limiter.acquire(reserved_tokens)
+            if wait_time > 0:
+                logger.debug("llm.rate_limit_wait", seconds=round(wait_time, 2), label=label)
+                if wait_time > 1.0:
+                    await asyncio.sleep(wait_time)
+
             try:
                 kwargs: dict[str, Any] = {
                     "model": model_id,
@@ -218,7 +227,11 @@ class LLMClient:
                     kwargs["max_tokens"] = max_tokens
 
                 if response_format is not None:
-                    if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                    if (
+                        isinstance(response_format, type)
+                        and issubclass(response_format, BaseModel)
+                        and not json_schema_fallback
+                    ):
                         kwargs["response_format"] = {
                             "type": "json_schema",
                             "json_schema": {
@@ -226,7 +239,11 @@ class LLMClient:
                                 "schema": response_format.model_json_schema(),
                             },
                         }
-                    elif response_format == "json_object":
+                    elif response_format == "json_object" or (
+                        isinstance(response_format, type)
+                        and issubclass(response_format, BaseModel)
+                        and json_schema_fallback
+                    ):
                         kwargs["response_format"] = {"type": "json_object"}
                         if not any("json" in str(m.get("content", "")).lower() for m in messages):
                             messages = list(messages)
@@ -258,6 +275,10 @@ class LLMClient:
                     self._stats["total_tokens"] += total_tokens
                     self._total_tokens += total_tokens
 
+                    # Settle the reservation against actual usage so the
+                    # sliding window reflects reality (not just estimates).
+                    await self._rate_limiter.settle(reservation, total_tokens)
+
                 content = response.choices[0].message.content or ""
 
                 if response_format is not None:
@@ -276,6 +297,7 @@ class LLMClient:
 
             except AuthenticationError as exc:
                 self._stats["total_errors"] += 1
+                await self._rate_limiter.cancel(reservation)
                 raise LLMAuthenticationError(
                     f"LLM authentication failed: {exc}",
                     original=exc,
@@ -285,6 +307,7 @@ class LLMClient:
                 self._stats["total_errors"] += 1
                 self._stats["total_retries"] += 1
                 last_error = exc
+                await self._rate_limiter.cancel(reservation)
 
                 retry_after = parse_retry_after(str(exc))
                 logger.warning(
@@ -307,6 +330,7 @@ class LLMClient:
                 self._stats["total_errors"] += 1
                 self._stats["total_retries"] += 1
                 last_error = exc
+                await self._rate_limiter.cancel(reservation)
 
                 if attempt < self._max_retries:
                     backoff = 2.0**attempt + 1.0
@@ -328,6 +352,7 @@ class LLMClient:
                 self._stats["total_errors"] += 1
                 self._stats["total_retries"] += 1
                 last_error = exc
+                await self._rate_limiter.cancel(reservation)
 
                 if attempt < self._max_retries:
                     backoff = 3.0**attempt
@@ -347,17 +372,63 @@ class LLMClient:
 
             except APIError as exc:
                 self._stats["total_errors"] += 1
+                await self._rate_limiter.cancel(reservation)
+
+                # Structured-output fallback: retry once with `json_object`
+                # when the model rejects the strict `json_schema` format.
+                if (
+                    isinstance(response_format, type)
+                    and issubclass(response_format, BaseModel)
+                    and not json_schema_fallback
+                    and getattr(exc, "status_code", None) == 400
+                    and any(
+                        needle in str(exc).lower()
+                        for needle in (
+                            "response format",
+                            "json_schema",
+                            "structured output",
+                            "response_format",
+                        )
+                    )
+                ):
+                    json_schema_fallback = True
+                    logger.warning(
+                        "llm.json_schema_fallback",
+                        label=label,
+                        model=model_id,
+                        error=str(exc),
+                    )
+                    continue
+
                 self._stats["total_retries"] += 1
                 last_error = exc
 
                 if attempt < self._max_retries:
-                    backoff = 2.0**attempt
+                    # Provider-side IP/account blocks (Groq's "Access denied.
+                    # Please check your network settings.") are usually
+                    # temporary abuse-protection cooldowns.  Back off longer
+                    # so the pipeline can ride out the block instead of
+                    # failing after a few seconds.
+                    err_text = str(exc).lower()
+                    access_denied = (
+                        getattr(exc, "status_code", None) == 403
+                        and "access denied" in err_text
+                        and "network settings" in err_text
+                    )
+                    backoff = 60.0 if access_denied else 2.0**attempt
                     logger.warning(
                         "llm.api_error",
                         label=label,
                         attempt=attempt,
                         status_code=getattr(exc, "status_code", None),
                         backoff_seconds=round(backoff, 1),
+                        access_denied=access_denied,
+                        hint=(
+                            "Provider-side block detected. Pausing longer "
+                            "between retries; the block may be temporary."
+                            if access_denied
+                            else None
+                        ),
                     )
                     await asyncio.sleep(backoff)
                     continue
@@ -366,6 +437,12 @@ class LLMClient:
                     f"API error after {self._max_retries} retries: {exc}",
                     original=exc,
                 ) from exc
+
+            except BaseException:
+                # Safety net: never leave the token budget drained by an
+                # unexpected failure (covers asyncio.CancelledError too).
+                await self._rate_limiter.cancel(reservation)
+                raise
 
         raise LLMError(
             f"Request failed after {self._max_retries} attempts",

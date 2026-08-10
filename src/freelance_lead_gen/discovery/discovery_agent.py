@@ -40,6 +40,13 @@ _RETRY_BACKOFF_BASE: float = 2.0
 _RETRY_BACKOFF_JITTER: float = 1.0
 """Random jitter (seconds) added to backoff."""
 
+_PLATFORM_CYCLE_TIMEOUT_SECONDS: int = 20 * 60
+"""Upper bound for a single platform extraction before it is cancelled.
+
+All platform extractors share a single browser page, so a stuck platform
+must never be able to hang the whole discovery cycle indefinitely.
+"""
+
 
 # ── Cycle report dataclass ─────────────────────────────────────────────────────
 
@@ -177,14 +184,21 @@ class DiscoveryAgent:
         """
         logger.info("discovery_agent.initialising")
 
+        # Determine whether any enabled platform actually needs a browser.
+        browser_needed = any(
+            PLATFORM_EXTRACTORS.get(p_name).requires_browser
+            for p_name in self._enabled_platforms
+            if p_name in PLATFORM_EXTRACTORS
+        )
+
         # Start the browser if it hasn't been started and we need it.
-        if self._browser is None:
+        if browser_needed and self._browser is None:
             self._browser = ManagedBrowser(
                 headless=self._settings.browser.headless,
                 user_data_dir=self._settings.browser.user_data_dir,
             )
 
-        if not self._browser.is_running:
+        if self._browser is not None and not self._browser.is_running:
             try:
                 await self._browser.start()
             except Exception as exc:
@@ -215,7 +229,9 @@ class DiscoveryAgent:
                 try:
                     extractor = extractor_cls(
                         browser=self._browser,
-                        credentials={},
+                        credentials=self._settings.platform_credentials.for_platform(
+                            platform_name
+                        ),
                         settings=self._settings,
                     )
                     self._platform_extractors[platform_name] = extractor
@@ -295,10 +311,8 @@ class DiscoveryAgent:
             queries=queries,
         )
 
-        semaphore = asyncio.Semaphore(3)
-
         async def _run_one(p_name: str) -> dict[str, Any] | None:
-            """Extract for a single platform (wrapped for parallel dispatch)."""
+            """Extract for a single platform."""
             extractor = self._platform_extractors.get(p_name)
             if extractor is None:
                 logger.warning(
@@ -307,34 +321,60 @@ class DiscoveryAgent:
                 )
                 return None
 
-            async with semaphore:
-                try:
-                    platform_result = await self._run_platform_extraction(
-                        platform_name=p_name,
-                        extractor=extractor,
-                        queries=queries,
-                    )
-                    return {
-                        "platform": p_name,
-                        "success": True,
-                        "result": platform_result,
-                        "error": None,
-                    }
-                except Exception as exc:
-                    logger.error(
-                        "discovery_agent.platform_failed",
-                        platform=p_name,
-                        error=str(exc),
-                        exc_info=True,
-                    )
-                    return {
-                        "platform": p_name,
-                        "success": False,
-                        "result": None,
-                        "error": exc,
-                    }
+            try:
+                platform_result = await self._run_platform_extraction(
+                    platform_name=p_name,
+                    extractor=extractor,
+                    queries=queries,
+                )
+                return {
+                    "platform": p_name,
+                    "success": True,
+                    "result": platform_result,
+                    "error": None,
+                }
+            except Exception as exc:
+                logger.error(
+                    "discovery_agent.platform_failed",
+                    platform=p_name,
+                    error=str(exc),
+                    exc_info=True,
+                )
+                return {
+                    "platform": p_name,
+                    "success": False,
+                    "result": None,
+                    "error": exc,
+                }
 
-        outcomes = await asyncio.gather(*[_run_one(p) for p in shuffled])
+        # All platform extractors share the same browser page, so they MUST
+        # run sequentially — concurrent navigations on one page corrupt each
+        # other's session and cause endless navigation timeouts (which
+        # manifests as the cycle appearing "stuck").  A per-platform timeout
+        # is the safety net for platforms that genuinely never complete.
+        outcomes: list[dict[str, Any] | None] = []
+        for p_name in shuffled:
+            try:
+                outcome = await asyncio.wait_for(
+                    _run_one(p_name),
+                    timeout=_PLATFORM_CYCLE_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.error(
+                    "discovery_agent.platform_timed_out",
+                    platform=p_name,
+                    timeout_seconds=_PLATFORM_CYCLE_TIMEOUT_SECONDS,
+                    exc_info=True,
+                )
+                outcome = {
+                    "platform": p_name,
+                    "success": False,
+                    "result": None,
+                    "error": TimeoutError(
+                        f"{p_name} exceeded {_PLATFORM_CYCLE_TIMEOUT_SECONDS}s"
+                    ),
+                }
+            outcomes.append(outcome)
 
         for outcome in outcomes:
             if outcome is None:
@@ -423,7 +463,14 @@ class DiscoveryAgent:
         searched = 0
         errors = 0
 
-        for query in queries:
+        # HTTP-only platforms (RemoteOK, YC Work) return the full listing
+        # set regardless of the query — fetch once instead of per query.
+        if extractor.query_agnostic:
+            effective_queries = [queries[0]] if queries else [""]
+        else:
+            effective_queries = queries
+
+        for query in effective_queries:
             for attempt in range(1, _MAX_RETRIES + 1):
                 try:
                     raw_leads = await extractor.extract_listings_raw(query=query)
@@ -471,8 +518,12 @@ class DiscoveryAgent:
                             error=str(exc),
                         )
 
-            # Inter-query delay to avoid bursts.
-            if query != queries[-1]:
+            # Inter-query delay to avoid bursts.  Skip when authentication
+            # already failed — nothing is being scraped, so pacing is pointless.
+            if (
+                query != queries[-1]
+                and (extractor._authenticated or not extractor._login_attempted)
+            ):
                 await asyncio.sleep(random.uniform(2.0, 5.0))
 
         return {

@@ -10,6 +10,7 @@ from __future__ import annotations as _annotations
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -80,6 +81,26 @@ class _LLMSettings(BaseSettings):
     timeout_seconds: int = Field(
         default=120, ge=10, le=600, description="Request timeout in seconds."
     )
+    max_tokens_per_minute: int = Field(
+        default=10_000,
+        ge=100,
+        le=1_000_000,
+        description=(
+            "Provider token-per-minute budget. The LLM client throttles "
+            "outgoing requests to stay under this ceiling (Groq's free tier "
+            "allows 12,000)."
+        ),
+    )
+    estimated_output_tokens: int = Field(
+        default=2_048,
+        ge=50,
+        le=50_000,
+        description=(
+            "Assumed output token count used when reserving budget. Generous "
+            "enough to cover long draft generation so bursts never overshoot "
+            "the provider's TPM ceiling."
+        ),
+    )
 
     @field_validator("base_url")
     @classmethod
@@ -143,6 +164,48 @@ class _PlatformSettings(BaseSettings):
         return [p.strip().lower() for p in self.enabled.split(",") if p.strip()]
 
 
+class _PlatformCredentialsSettings(BaseSettings):
+    """Platform account credentials (kept out of :class:`Settings` logs).
+
+    Credentials are read directly from environment variables / the ``.env``
+    file and only ever passed to the platform extractors at discovery time.
+    """
+
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    upwork_username: str = Field(default="", description="Upwork account email/username.")
+    upwork_password: str = Field(default="", description="Upwork account password.")
+    linkedin_username: str = Field(default="", description="LinkedIn account email/username.")
+    linkedin_password: str = Field(default="", description="LinkedIn account password.")
+    freelancer_username: str = Field(default="", description="Freelancer.com account username.")
+    freelancer_password: str = Field(default="", description="Freelancer.com account password.")
+
+    # ── computed convenience ────────────────────────────────────────────
+    def for_platform(self, platform_name: str) -> dict[str, str]:
+        """Return the ``{email/username, password}`` dict for *platform_name*.
+
+        If no credentials are configured, an empty dict is returned and the
+        extractor falls back to cookie/session-based auth or skips login.
+        """
+        mapping: dict[str, str] = {
+            "upwork": "upwork",
+            "linkedin": "linkedin",
+            "freelancer": "freelancer",
+        }
+        key = mapping.get(platform_name.lower())
+        if key is None:
+            return {}
+        username = getattr(self, f"{key}_username", "") or ""
+        password = getattr(self, f"{key}_password", "") or ""
+        if not username or not password:
+            return {}
+        return {"username": username, "password": password}
+
+
 class Settings(BaseSettings):
     """Root configuration object for the freelance lead generation system.
 
@@ -163,6 +226,9 @@ class Settings(BaseSettings):
     database: _DatabaseSettings = Field(default_factory=_DatabaseSettings)
     hitl: _HITLSettings = Field(default_factory=_HITLSettings)
     platforms: _PlatformSettings = Field(default_factory=_PlatformSettings)
+    platform_credentials: _PlatformCredentialsSettings = Field(
+        default_factory=_PlatformCredentialsSettings
+    )
 
     # ── model_config set the env prefix at the parent level too ─────────
     # These nested models use their own env_prefix via SettingsConfigDict.
@@ -198,4 +264,5 @@ def get_settings() -> Settings:
     of the process.  Call ``get_settings.cache_clear()`` to reload (useful
     in tests that mutate ``os.environ``).
     """
+    load_dotenv()
     return Settings()  # type: ignore[call-arg]

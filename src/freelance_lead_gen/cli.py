@@ -178,6 +178,29 @@ def _health_http_server(port: int = 8080) -> HTTPServer:
 @click.version_option()
 def main() -> None:
     """Freelance Lead Gen — automated opportunity discovery & outreach preparation."""
+    _reconfigure_stdio_utf8()
+
+
+def _reconfigure_stdio_utf8() -> None:
+    """Force UTF-8 encoding on stdout/stderr.
+
+    Scraped listings frequently contain non-ASCII characters (emoji,
+    accented names, CJK text).  Windows consoles default to the OEM/ANSI
+    code page (e.g. cp1252), which raises ``UnicodeEncodeError`` whenever
+    such content is printed.  Re-wrapping the underlying buffers with
+    ``errors="replace"`` keeps the CLI usable regardless of the console's
+    code page.
+    """
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+    if sys.stderr is not None and hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
 
 
 # ── init ──────────────────────────────────────────────────────────────────────
@@ -279,7 +302,7 @@ async def _do_discover(headless: bool) -> None:
             title_style="bold",
         )
         for pname, pdata in sorted(report.per_platform.items()):
-            succeeded = "✓" if pdata.get("failed", 0) == 0 else "✗"
+            succeeded = "OK" if pdata.get("failed", 0) == 0 else "FAIL"
             table.add_row(pname, str(pdata.get("found", 0)), str(pdata.get("new", 0)), succeeded)
         console.print(table)
 
@@ -602,13 +625,13 @@ async def _do_health(check: bool = False) -> None:
     if errors:
         has_failure = True
         if not check:
-            console.print("[red]✗[/red] LLM Configuration: [red]INVALID[/red]")
+            console.print("[red]X[/red] LLM Configuration: [red]INVALID[/red]")
             for err in errors:
                 console.print(f"    {err}")
         else:
             logger.warning("Health check — LLM configuration invalid", errors=errors)
     elif not check:
-        console.print("[green]✓[/green] LLM Configuration: [green]OK[/green]")
+        console.print("[green]OK[/green] LLM Configuration: [green]OK[/green]")
 
     # ── 2. LLM endpoint reachability (lightweight TCP check) ────────────
     settings = get_settings()
@@ -626,7 +649,7 @@ async def _do_health(check: bool = False) -> None:
             await writer.wait_closed()
             if not check:
                 console.print(
-                    f"[green]✓[/green] LLM Endpoint: [green]reachable[/green] ({host}:{port})"
+                    f"[green]OK[/green] LLM Endpoint: [green]reachable[/green] ({host}:{port})"
                 )
         else:
             if not check:
@@ -637,7 +660,7 @@ async def _do_health(check: bool = False) -> None:
     except OSError as exc:
         has_failure = True
         if not check:
-            console.print(f"[red]✗[/red] LLM Endpoint: [red]unreachable[/red] ({base_url}): {exc}")
+            console.print(f"[red]X[/red] LLM Endpoint: [red]unreachable[/red] ({base_url}): {exc}")
         else:
             logger.warning(
                 "Health check — LLM endpoint unreachable", base_url=base_url, error=str(exc)
@@ -646,7 +669,7 @@ async def _do_health(check: bool = False) -> None:
         has_failure = True
         if not check:
             console.print(
-                f"[red]✗[/red] LLM Endpoint: [red]timeout[/red] "
+                f"[red]X[/red] LLM Endpoint: [red]timeout[/red] "
                 f"({base_url}) — host did not respond within 5 s"
             )
         else:
@@ -657,11 +680,11 @@ async def _do_health(check: bool = False) -> None:
         await init_db()
         await close_db()
         if not check:
-            console.print("[green]✓[/green] Database: [green]OK[/green]")
+            console.print("[green]OK[/green] Database: [green]OK[/green]")
     except Exception as exc:
         has_failure = True
         if not check:
-            console.print(f"[red]✗[/red] Database: [red]FAILED[/red] — {exc}")
+            console.print(f"[red]X[/red] Database: [red]FAILED[/red] — {exc}")
         else:
             logger.warning("Health check — database connection failed", error=str(exc))
 
