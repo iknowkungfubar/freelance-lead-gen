@@ -296,15 +296,33 @@ class LeadGenOrchestrator:
             if run_discovery:
                 current_opps = await self._run_discovery_phase(report)
 
-            # Use provided opportunities (or merge with discovered).
+            # ── Phase 1b: Resume ─────────────────────────────────────────
+            # No discovery and no explicit input: pick up any pending
+            # opportunities left over from an earlier (possibly interrupted)
+            # run so a restart continues where it stopped instead of
+            # starting from zero.  Pending DISCOVERED leads still need
+            # filtering; pending QUALIFIED leads are ready for drafting.
+            resume_discovered: list[LeadOpportunity] = []
+            resume_qualified: list[LeadOpportunity] = []
+            if not run_discovery and opportunities is None:
+                resume_discovered, resume_qualified = await self._load_pending_opportunities()
+
+            # Build the full working set, deduplicated by id.
+            merged: list[LeadOpportunity] = []
+            seen_ids: set[str] = set()
+            for opp in list(current_opps) + (opportunities or []) + resume_discovered + resume_qualified:
+                if opp.id not in seen_ids:
+                    merged.append(opp)
+                    seen_ids.add(opp.id)
+            current_opps = merged
             if opportunities:
-                # Deduplicate by id.
-                seen_ids = {o.id for o in current_opps}
-                for opp in opportunities:
-                    if opp.id not in seen_ids:
-                        current_opps.append(opp)
-                        seen_ids.add(opp.id)
                 report.total_discovered += len(opportunities)
+            if resume_discovered or resume_qualified:
+                logger.info(
+                    "orchestrator.resumed_pending",
+                    discovered=len(resume_discovered),
+                    qualified=len(resume_qualified),
+                )
 
             if not current_opps:
                 logger.info("orchestrator.no_opportunities")
@@ -316,9 +334,20 @@ class LeadGenOrchestrator:
             if self._check_shutdown(report):
                 return report
 
+            # Leads resumed as already-qualified skip re-filtering (they were
+            # scored in a previous run); only the remaining (discovered) set
+            # goes through the qualification phase again.
+            resume_qualified_ids = {o.id for o in resume_qualified}
+            to_filter = [o for o in current_opps if o.id not in resume_qualified_ids]
+            pre_qualified = [o for o in current_opps if o.id in resume_qualified_ids]
+
             qualified: list[LeadOpportunity] = []
             if run_filtering:
-                qualified = await self._run_filtering_phase(current_opps, profile, report)
+                if to_filter:
+                    qualified = await self._run_filtering_phase(to_filter, profile, report)
+                qualified.extend(pre_qualified)
+                if pre_qualified:
+                    report.total_qualified = len(qualified)
             else:
                 qualified = current_opps
 
@@ -863,6 +892,37 @@ class LeadGenOrchestrator:
                         await self._repository.update_draft(draft)
 
     # ── Internal helpers ─────────────────────────────────────────────────
+
+    async def _load_pending_opportunities(
+        self,
+    ) -> tuple[list[LeadOpportunity], list[LeadOpportunity]]:
+        """Load pending opportunities from the database for a resumed run.
+
+        Returns a ``(discovered, qualified)`` tuple:
+
+        - ``discovered``: opportunities with status :data:`DISCOVERED` that
+          still need filtering/qualification.
+        - ``qualified``: opportunities with status :data:`QUALIFIED` that
+          are ready for personalisation/drafting.
+
+        Individual lookups are wrapped so a failure in one never crashes
+        the pipeline; the failed set simply comes back empty.
+        """
+        discovered: list[LeadOpportunity] = []
+        qualified: list[LeadOpportunity] = []
+        try:
+            discovered = await self._repository.search(
+                status=LeadStatus.DISCOVERED, limit=500
+            )
+        except Exception as exc:
+            logger.warning("orchestrator.resume_discovered_failed", error=str(exc))
+        try:
+            qualified = await self._repository.search(
+                status=LeadStatus.QUALIFIED, limit=500
+            )
+        except Exception as exc:
+            logger.warning("orchestrator.resume_qualified_failed", error=str(exc))
+        return discovered, qualified
 
     def _check_shutdown(self, report: OrchestratorReport) -> bool:
         """Check if shutdown was requested and record the interruption.

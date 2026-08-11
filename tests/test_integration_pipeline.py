@@ -281,6 +281,112 @@ class TestErrorRecovery:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Resume — a restart must continue from pending leads in the database
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestResume:
+    """A restart (run_discovery=False, no explicit input) must pick up pending
+    opportunities from the database instead of starting from zero."""
+
+    @pytest.mark.asyncio
+    async def test_resume_drafts_previously_qualified_lead(
+        self,
+        mock_llm_server: MockLLMServer,
+        in_memory_db: None,
+    ) -> None:
+        """A QUALIFIED lead left in the DB is drafted without being re-filtered."""
+        opp = _pipeline_opportunity("resume-qualified-1", "Resume Qualified RAG Developer")
+        opp.status = LeadStatus.QUALIFIED
+        await _insert_opportunities([opp])
+
+        settings = _build_settings(mock_llm_server.base_url)
+        orchestrator = LeadGenOrchestrator(settings=settings)
+
+        report = await orchestrator.run_full_pipeline(run_discovery=False)
+
+        assert report.success, f"Pipeline failed: {report.errors}"
+        assert report.total_qualified == 1
+        assert report.total_drafted == 1
+        assert "filtering" not in report.phases_completed
+
+        repo = OpportunityRepository()
+        refreshed = await repo.get_by_id(opp.id)
+        assert refreshed.status in (LeadStatus.DRAFTED, LeadStatus.REVIEWED)
+
+    @pytest.mark.asyncio
+    async def test_resume_filters_previously_discovered_leads(
+        self,
+        mock_llm_server: MockLLMServer,
+        in_memory_db: None,
+    ) -> None:
+        """DISCOVERED leads left in the DB are qualified then drafted."""
+        opps = [
+            _pipeline_opportunity("resume-disc-1", "Resume Discovered AI Engineer"),
+            _pipeline_opportunity("resume-disc-2", "Resume Discovered LangChain Dev"),
+        ]
+        await _insert_opportunities(opps)
+
+        settings = _build_settings(mock_llm_server.base_url)
+        orchestrator = LeadGenOrchestrator(settings=settings)
+
+        report = await orchestrator.run_full_pipeline(run_discovery=False)
+
+        assert report.success, f"Pipeline failed: {report.errors}"
+        assert report.total_discovered == 0
+        assert report.total_qualified >= 1
+        assert report.total_drafted >= 1
+        assert "filtering" in report.phases_completed
+
+    @pytest.mark.asyncio
+    async def test_resume_skips_refiltering_qualified_lead(
+        self,
+        mock_llm_server: MockLLMServer,
+        in_memory_db: None,
+    ) -> None:
+        """A weakly-scoring lead that was already qualified must NOT be
+        re-scored by filtering during resume (it would be rejected)."""
+        weak = _pipeline_opportunity(
+            "resume-weak-qualified",
+            "Unrelated Office Administration Task",
+        )
+        weak.description = (
+            "Help with generic office work, data entry, and answering emails. "
+            "No technical or software requirements."
+        )
+        weak.skills = []
+        weak.status = LeadStatus.QUALIFIED
+        await _insert_opportunities([weak])
+
+        settings = _build_settings(mock_llm_server.base_url)
+        orchestrator = LeadGenOrchestrator(settings=settings)
+
+        report = await orchestrator.run_full_pipeline(run_discovery=False)
+
+        assert report.success, f"Pipeline failed: {report.errors}"
+        assert "filtering" not in report.phases_completed
+        assert report.total_qualified == 1
+        assert report.total_drafted == 1
+
+    @pytest.mark.asyncio
+    async def test_resume_with_no_pending_leads_is_noop(
+        self,
+        mock_llm_server: MockLLMServer,
+        in_memory_db: None,
+    ) -> None:
+        """With an empty database, a resume run is a successful no-op."""
+        settings = _build_settings(mock_llm_server.base_url)
+        orchestrator = LeadGenOrchestrator(settings=settings)
+
+        report = await orchestrator.run_full_pipeline(run_discovery=False)
+
+        assert report.success
+        assert report.total_qualified == 0
+        assert report.total_drafted == 0
+        assert report.total_errors == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Pipeline-level edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 

@@ -350,6 +350,24 @@ async def _do_pipeline(run_discovery: bool, headless: bool) -> None:
 
     console.print("[bold]Initialising pipeline...[/bold]")
 
+    if not run_discovery:
+        repo = OpportunityRepository()
+        try:
+            pending_discovered = await repo.search(status=LeadStatus.DISCOVERED, limit=500)
+            pending_qualified = await repo.search(status=LeadStatus.QUALIFIED, limit=500)
+            if pending_discovered or pending_qualified:
+                console.print(
+                    f"[yellow]Resuming {len(pending_discovered)} discovered + "
+                    f"{len(pending_qualified)} qualified lead(s) from the database.[/yellow]"
+                )
+            else:
+                console.print(
+                    "[yellow]No pending leads in the database. "
+                    "Run the pipeline without --no-discover to fetch new leads.[/yellow]"
+                )
+        except Exception:
+            pass
+
     orchestrator = LeadGenOrchestrator(settings=settings)
     await orchestrator.initialize()
 
