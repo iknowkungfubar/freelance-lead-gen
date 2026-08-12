@@ -155,6 +155,21 @@ class _HITLSettings(BaseSettings):
     )
 
 
+class _TelegramSettings(BaseSettings):
+    """Telegram bot notification settings."""
+
+    model_config = SettingsConfigDict(env_prefix="TELEGRAM_")
+
+    bot_token: str = Field(default="", description="Telegram bot API token (from @BotFather).")
+    chat_id: str = Field(default="", description="Telegram chat ID to send notifications to.")
+    send_reports: bool = Field(default=True, description="Send pipeline run summaries to Telegram.")
+
+    @property
+    def configured(self) -> bool:
+        """Whether a bot token and chat ID are both present."""
+        return bool(self.bot_token and self.chat_id)
+
+
 class _PlatformSettings(BaseSettings):
     """Platform enablement settings."""
 
@@ -233,6 +248,7 @@ class Settings(BaseSettings):
     llm: _LLMSettings = Field(default_factory=_LLMSettings)
     database: _DatabaseSettings = Field(default_factory=_DatabaseSettings)
     hitl: _HITLSettings = Field(default_factory=_HITLSettings)
+    telegram: _TelegramSettings = Field(default_factory=_TelegramSettings)
     platforms: _PlatformSettings = Field(default_factory=_PlatformSettings)
     platform_credentials: _PlatformCredentialsSettings = Field(
         default_factory=_PlatformCredentialsSettings

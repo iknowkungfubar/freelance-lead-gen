@@ -1,3 +1,53 @@
+# Sesi Log — 13 Agustus 2026 (malam)
+
+Ringkasan percakapan sesi ini untuk resume kerja berikutnya. Proyek: **freelance-lead-gen**
+(bot otomatisasi screening lowongan freelance + pembuatan draft outreach).
+
+## Status akhir sesi
+
+- **Notifikasi Telegram SELESAI** — pipeline kirim ringkasan otomatis ke @dawamweb3.
+- **Auto-apply (auto-approve) AKTIF** — `HITL_AUTO_APPROVE=true`.
+- **462/462 test lulus** (12 test baru: 8 telegram notifier + 3 orchestrator notif + 1 package init),
+  `ruff check` bersih.
+- Demo pipeline penuh: discovery 37 → qualified 2 → drafted 1 → verified pass (skor 96)
+  → **auto-approved REVIEWED** (Senior Software QA Engineer @ CoverGo, skor 73) → notif
+  Telegram terkirim. 1 draft gagal: rate limit Groq TPM 12000 (Used 10863, Requested 1709).
+- **Audit keamanan**: `.env`, `data/`, `browser_data/` ter-ignore; tidak ada rahasia
+  (token Telegram, Groq API key, password) bocor ke file/commit/history yang di-track.
+  Semua kecocokan grep hanya placeholder di README/docs/.env.example/test.
+
+## Perubahan kode sesi ini
+
+1. **Modul notifikasi** — `src/freelance_lead_gen/notifications/` (baru):
+   - `telegram.py`: `TelegramNotifier` via Bot API (`sendMessage`), best-effort (gagal
+     tidak pernah menggagalkan pipeline), `configured` property, `aclose()`.
+   - Hook di `orchestrator.py`: `_send_pipeline_notification(report)` dipanggil di
+     `run_full_pipeline` finally saat `telegram.send_reports` true; skip jika report kosong.
+     Format pesan: status, discovery/qualified/drafted/verified/reviewed, error, hint review.
+
+2. **Settings baru** — `src/freelance_lead_gen/config/settings.py`:
+   - `_TelegramSettings` (env prefix `TELEGRAM_`): `bot_token`, `chat_id`, `send_reports`.
+
+3. **Kredensial** — `.env` (gitignored): `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` diambil
+   dari `Desktop\smart-form-filler\.env` (bot @dawamweb3, chat 805652229), `HITL_AUTO_APPROVE=true`.
+
+4. **Test** — `tests/test_notifications/test_telegram.py` (8) + `TestOrchestratorNotifications`
+   di `test_orchestrator.py` (3). Fixture pakai env kosong (bukan delenv) karena `.env` kini
+   berisi kredensial asli.
+
+## Catatan penting untuk sesi berikutnya
+
+- Groq free tier: TPM 12000 — draft terbaik dijadwalkan antar-cycle, bukan semua sekaligus.
+  Upgrade Dev Tier (console.groq.com/settings/billing) untuk cap yang lebih besar.
+- Test: `--basetemp="C:\Users\ASUS\AppData\Local\Temp\opencode\pytest-base"` (temp dir default
+  kena WinError 5 — masalah lingkungan).
+- Kredensial Telegram jangan pernah ditulis ke SESSION_LOG/README — `.env` saja (gitignored).
+- 1 lead (e1962f590144) masih `qualified` menunggu draft — jalankan `pipeline --no-discover`
+  untuk resume drafting.
+- Notifikasi tersedia otomatis lewat `pipeline` maupun auto-screen di `serve`.
+
+---
+
 # Sesi Log — 13 Agustus 2026
 
 Ringkasan percakapan sesi ini untuk resume kerja berikutnya. Proyek: **freelance-lead-gen**

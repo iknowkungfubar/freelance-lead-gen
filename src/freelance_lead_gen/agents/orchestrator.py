@@ -39,6 +39,7 @@ from freelance_lead_gen.models.opportunity import (
     OutboundDraft,
 )
 from freelance_lead_gen.models.pipeline import PipelineState
+from freelance_lead_gen.notifications.telegram import TelegramNotifier
 from freelance_lead_gen.storage.repository import OpportunityRepository
 
 logger = structlog.get_logger(__name__)
@@ -200,6 +201,9 @@ class LeadGenOrchestrator:
         )
         self._repository: OpportunityRepository = repository or OpportunityRepository()
 
+        # Notifications (Telegram).
+        self._telegram: TelegramNotifier = TelegramNotifier(settings=self._settings)
+
         # Shutdown coordination.
         self._shutdown_event: asyncio.Event = asyncio.Event()
         self._is_running: bool = False
@@ -310,7 +314,9 @@ class LeadGenOrchestrator:
             # Build the full working set, deduplicated by id.
             merged: list[LeadOpportunity] = []
             seen_ids: set[str] = set()
-            for opp in list(current_opps) + (opportunities or []) + resume_discovered + resume_qualified:
+            for opp in (
+                list(current_opps) + (opportunities or []) + resume_discovered + resume_qualified
+            ):
                 if opp.id not in seen_ids:
                     merged.append(opp)
                     seen_ids.add(opp.id)
@@ -469,6 +475,11 @@ class LeadGenOrchestrator:
                 errors=report.total_errors,
                 elapsed_seconds=report.elapsed_seconds,
             )
+
+            # Best-effort Telegram summary when reports are enabled.
+            if self._settings.telegram.send_reports:
+                with contextlib.suppress(Exception):
+                    await self._send_pipeline_notification(report)
 
         return report
 
@@ -893,6 +904,41 @@ class LeadGenOrchestrator:
 
     # ── Internal helpers ─────────────────────────────────────────────────
 
+    async def _send_pipeline_notification(self, report: OrchestratorReport) -> None:
+        """Send a Telegram summary of a completed pipeline run.
+
+        Best-effort: a missing/unreachable notifier is logged and swallowed.
+        The message is only sent when there was actually something to report
+        (new leads screened or drafts produced).
+        """
+        if not self._telegram.configured:
+            return
+        if (
+            report.total_discovered == 0
+            and report.total_qualified == 0
+            and report.total_drafted == 0
+        ):
+            logger.debug("telegram.skip_empty_report")
+            return
+
+        status = "[OK]" if report.success else "[!]"
+        lines = [
+            f"{status} Pipeline selesai — {datetime.now(UTC).strftime('%d %b %H:%M')} UTC",
+            f"• Discovery: {report.total_discovered}",
+            f"• Qualified: {report.total_qualified}",
+            f"• Drafted:   {report.total_drafted}",
+            f"• Verified:  {report.total_verified_pass} pass / {report.total_verified_fail} fail",
+            f"• Reviewed:  {report.total_reviewed}",
+        ]
+        if report.total_errors:
+            lines.append(f"• Errors:    {report.total_errors}")
+        if report.phases_failed:
+            lines.append(f"[!] Gagal: {', '.join(report.phases_failed)}")
+        lines.append("")
+        lines.append("Review draf: `freelance_lead_gen review`")
+
+        await self._telegram.send("\n".join(lines))
+
     async def _load_pending_opportunities(
         self,
     ) -> tuple[list[LeadOpportunity], list[LeadOpportunity]]:
@@ -911,15 +957,11 @@ class LeadGenOrchestrator:
         discovered: list[LeadOpportunity] = []
         qualified: list[LeadOpportunity] = []
         try:
-            discovered = await self._repository.search(
-                status=LeadStatus.DISCOVERED, limit=500
-            )
+            discovered = await self._repository.search(status=LeadStatus.DISCOVERED, limit=500)
         except Exception as exc:
             logger.warning("orchestrator.resume_discovered_failed", error=str(exc))
         try:
-            qualified = await self._repository.search(
-                status=LeadStatus.QUALIFIED, limit=500
-            )
+            qualified = await self._repository.search(status=LeadStatus.QUALIFIED, limit=500)
         except Exception as exc:
             logger.warning("orchestrator.resume_qualified_failed", error=str(exc))
         return discovered, qualified

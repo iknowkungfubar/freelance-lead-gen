@@ -16,6 +16,7 @@ from freelance_lead_gen.agents.verification_agent import (
     VerificationAgent,
     VerificationResult,
 )
+from freelance_lead_gen.config.settings import Settings
 from freelance_lead_gen.discovery.discovery_agent import DiscoveryAgent, DiscoveryCycleReport
 from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus, OutboundDraft
 from freelance_lead_gen.storage.repository import OpportunityRepository
@@ -366,3 +367,93 @@ class TestOrchestratorErrorRecovery:
 
         assert report.total_drafted == 1
         assert report.total_errors > 0
+
+
+class TestOrchestratorNotifications:
+    """Tests for the Telegram pipeline-summary notification."""
+
+    def _make_orchestrator(
+        self,
+        mock_all_agents: dict,
+        *,
+        configured: bool,
+    ) -> LeadGenOrchestrator:
+        settings = Settings(
+            telegram={
+                "bot_token": "123:FAKE" if configured else "",
+                "chat_id": "42" if configured else "",
+            }
+        )
+        orchestrator = LeadGenOrchestrator(
+            settings=settings,
+            discovery_agent=mock_all_agents["discovery"],
+            filtering_pipeline=mock_all_agents["filtering"],
+            personalization_agent=mock_all_agents["personalization"],
+            verification_agent=mock_all_agents["verification"],
+            repository=mock_all_agents["repository"],
+            llm_client=mock_all_agents["llm"],
+        )
+        return orchestrator
+
+    @pytest.mark.asyncio
+    async def test_notification_sent_for_busy_run(
+        self,
+        mock_all_agents: dict,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:FAKE")
+        monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+        orchestrator = self._make_orchestrator(mock_all_agents, configured=True)
+
+        send_mock = AsyncMock(return_value=True)
+        orchestrator._telegram.send = send_mock
+
+        report = OrchestratorReport(
+            success=True,
+            total_discovered=10,
+            total_qualified=3,
+            total_drafted=2,
+            total_verified_pass=2,
+        )
+
+        await orchestrator._send_pipeline_notification(report)
+
+        send_mock.assert_awaited_once()
+        message = send_mock.await_args.args[0]
+        assert "Pipeline selesai" in message
+        assert "10" in message
+        assert "3" in message
+
+    @pytest.mark.asyncio
+    async def test_notification_skipped_when_nothing_to_report(
+        self,
+        mock_all_agents: dict,
+    ) -> None:
+        orchestrator = self._make_orchestrator(mock_all_agents, configured=True)
+        send_mock = AsyncMock(return_value=True)
+        orchestrator._telegram.send = send_mock
+
+        report = OrchestratorReport(success=True)
+
+        await orchestrator._send_pipeline_notification(report)
+
+        send_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_notification_skipped_when_not_configured(
+        self,
+        mock_all_agents: dict,
+    ) -> None:
+        orchestrator = self._make_orchestrator(mock_all_agents, configured=False)
+        send_mock = AsyncMock(return_value=True)
+        orchestrator._telegram.send = send_mock
+
+        report = OrchestratorReport(
+            success=True,
+            total_discovered=5,
+            total_drafted=1,
+        )
+
+        await orchestrator._send_pipeline_notification(report)
+
+        send_mock.assert_not_awaited()
