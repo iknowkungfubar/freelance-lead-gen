@@ -937,7 +937,8 @@ async def _do_serve() -> None:
     """Async implementation of the serve command.
 
     Initialises the database, creates a discovery agent, starts the
-    discovery scheduler, and runs until the user presses Ctrl+C.
+    discovery scheduler (auto-screening newly found leads when enabled),
+    and runs until the user presses Ctrl+C.
     """
     try:
         await _ensure_db()
@@ -949,7 +950,16 @@ async def _do_serve() -> None:
     agent = DiscoveryAgent(settings=settings)
     await agent.initialize()
 
-    scheduler = agent.create_scheduler()
+    # Full pipeline orchestrator used to auto-screen new leads in the
+    # background after each discovery round that finds them.
+    orchestrator = LeadGenOrchestrator(settings=settings, discovery_agent=agent)
+
+    async def _auto_screen(_platform: str) -> None:
+        await orchestrator.run_full_pipeline(run_discovery=False)
+
+    scheduler = agent.create_scheduler(
+        pipeline_fn=_auto_screen if settings.discovery.auto_screen else None
+    )
 
     # Start health HTTP server in a background daemon thread.
     port = 8080

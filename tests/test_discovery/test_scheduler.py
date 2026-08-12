@@ -86,6 +86,8 @@ async def test_health_status_property() -> None:
     assert "consecutive_failures" in status
     assert "auto_disabled" in status
     assert "last_cycle_at" in status
+    assert "pipeline_runs" in status
+    assert "pipeline_failures" in status
 
     # Default state before any cycles.
     assert status["running"] is False
@@ -96,3 +98,111 @@ async def test_health_status_property() -> None:
     assert status["consecutive_failures"] == {}
     assert status["auto_disabled"] == []
     assert status["last_cycle_at"] is None
+    assert status["pipeline_runs"] == 0
+    assert status["pipeline_failures"] == 0
+
+
+@pytest.mark.asyncio
+async def test_pipeline_runs_after_new_leads() -> None:
+    """Auto-screening runs after a discovery cycle that found new leads."""
+    pipeline_fn = AsyncMock(return_value=None)
+    scheduler = DiscoveryScheduler(
+        discovery_fn=AsyncMock(
+            return_value={"remote_ok": {"found": 5, "new": 3, "failed": 0}}
+        ),
+        pipeline_fn=pipeline_fn,
+    )
+    scheduler.add_platform("remote_ok", interval_minutes=999)
+
+    await scheduler._run_discovery_cycle("remote_ok")
+
+    pipeline_fn.assert_awaited_once_with("remote_ok")
+    assert scheduler._stats.pipeline_runs == 1
+    assert scheduler._stats.pipeline_failures == 0
+    # The cycle itself must still be marked successful.
+    assert scheduler._platforms["remote_ok"].consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_pipeline_skipped_when_no_new_leads() -> None:
+    """Auto-screening is skipped when discovery found no new leads."""
+    pipeline_fn = AsyncMock(return_value=None)
+    scheduler = DiscoveryScheduler(
+        discovery_fn=AsyncMock(
+            return_value={"remote_ok": {"found": 5, "new": 0, "failed": 0}}
+        ),
+        pipeline_fn=pipeline_fn,
+    )
+    scheduler.add_platform("remote_ok", interval_minutes=999)
+
+    await scheduler._run_discovery_cycle("remote_ok")
+
+    pipeline_fn.assert_not_awaited()
+    assert scheduler._stats.pipeline_runs == 0
+    assert scheduler._stats.total_new == 0
+
+
+@pytest.mark.asyncio
+async def test_pipeline_skipped_when_not_configured() -> None:
+    """Without a pipeline_fn the cycle behaves as before (discovery only)."""
+    scheduler = DiscoveryScheduler(
+        discovery_fn=AsyncMock(
+            return_value={"remote_ok": {"found": 5, "new": 5, "failed": 0}}
+        ),
+    )
+    scheduler.add_platform("remote_ok", interval_minutes=999)
+
+    await scheduler._run_discovery_cycle("remote_ok")
+
+    assert scheduler._stats.pipeline_runs == 0
+    assert scheduler._platforms["remote_ok"].consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_pipeline_failure_does_not_fail_cycle() -> None:
+    """A screening error must not fail the discovery cycle or disable the
+    platform — it is tracked separately in pipeline_failures."""
+    scheduler = DiscoveryScheduler(
+        discovery_fn=AsyncMock(
+            return_value={"remote_ok": {"found": 2, "new": 2, "failed": 0}}
+        ),
+        pipeline_fn=AsyncMock(side_effect=RuntimeError("LLM quota exhausted")),
+    )
+    scheduler.add_platform("remote_ok", interval_minutes=999)
+    ps = scheduler._platforms["remote_ok"]
+    ps.max_consecutive_failures = 2
+
+    await scheduler._run_discovery_cycle("remote_ok")
+
+    assert ps.consecutive_failures == 0
+    assert ps.enabled
+    assert scheduler._stats.total_failures == 0
+    assert scheduler._stats.pipeline_runs == 0
+    assert scheduler._stats.pipeline_failures == 1
+
+
+@pytest.mark.asyncio
+async def test_accepts_report_object_result() -> None:
+    """Discovery cycles in production return a DiscoveryCycleReport object
+    exposing ``per_platform`` — the scheduler must parse it correctly."""
+    from types import SimpleNamespace
+
+    report = SimpleNamespace(
+        per_platform={
+            "remote_ok": {"found": 7, "new": 4, "failed": 0, "searched": 1},
+        }
+    )
+    pipeline_fn = AsyncMock(return_value=None)
+    scheduler = DiscoveryScheduler(
+        discovery_fn=AsyncMock(return_value=report),
+        pipeline_fn=pipeline_fn,
+    )
+    scheduler.add_platform("remote_ok", interval_minutes=999)
+
+    await scheduler._run_discovery_cycle("remote_ok")
+
+    assert scheduler._stats.total_runs == 1
+    assert scheduler._stats.total_leads == 7
+    assert scheduler._stats.total_new == 4
+    assert scheduler._platforms["remote_ok"].consecutive_failures == 0
+    pipeline_fn.assert_awaited_once_with("remote_ok")

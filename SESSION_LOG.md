@@ -1,3 +1,65 @@
+# Sesi Log — 13 Agustus 2026
+
+Ringkasan percakapan sesi ini untuk resume kerja berikutnya. Proyek: **freelance-lead-gen**
+(bot otomatisasi screening lowongan freelance + pembuatan draft outreach).
+
+## Status akhir sesi
+
+- **Auto-screening end-to-end SELESAI** — bot kini bisa full auto tanpa sentuhan manual
+  untuk bagian discovery → screening → drafting → verifikasi.
+- **451/451 test lulus** (termasuk 5 test baru scheduler), `ruff check` bersih.
+- Demo `serve` berjalan sehat: DB init OK, discovery agent init (remote_ok, yc_work),
+  browser start OK, scheduler running. Discovery pertama belum trigger dalam 45s
+  karena jitter acak 0–300s (by design).
+
+## Perubahan kode sesi ini
+
+1. **Auto-screening di scheduler** — `src/freelance_lead_gen/discovery/scheduler.py`:
+   - `DiscoveryScheduler` menerima param baru `pipeline_fn` (async callable). Setelah
+     setiap discovery cycle yang menemukan lead baru (`new > 0`), scheduler otomatis
+     memanggil `pipeline_fn(platform_name)` di dalam cycle-lock (discovery & screening
+     tidak pernah overlap).
+   - Gagal screening di-track sebagai `pipeline_failures` dan **tidak** menggagalkan
+     cycle maupun auto-disable platform.
+   - **Fix bug**: parsing hasil discovery sebelumnya crash karena `run_discovery_cycle`
+     mengembalikan `DiscoveryCycleReport` (objek dgn `per_platform`) sedangkan scheduler
+     memanggil `result.get(...)` (kontrak dict dari mock). Kini `_extract_platform_result()`
+     menerima keduanya.
+   - `get_status()` / `health_status()` kini expose `pipeline_runs` / `pipeline_failures`.
+
+2. **Wire di serve** — `src/freelance_lead_gen/cli.py` `_do_serve`:
+   - Membuat `LeadGenOrchestrator` (shared `DiscoveryAgent`) dan `pipeline_fn` yang
+     memanggil `orchestrator.run_full_pipeline(run_discovery=False)` — memakai jalur
+     resume, sehingga lead DISCOVERED/QUALIFIED yang belum diproses langsung di-screen.
+   - Auto-screening aktif hanya jika `settings.discovery.auto_screen` True.
+
+3. **Setting baru** — `src/freelance_lead_gen/config/settings.py`:
+   - `_DiscoverySettings.auto_screen` (env `DISCOVERY_AUTO_SCREEN`, default `true`).
+   - Dicatat juga di `.env` sebagai komentar dokumentatif.
+
+4. **`create_scheduler`** — `discovery_agent.py` meneruskan `pipeline_fn`.
+
+5. **Test** — `tests/test_discovery/test_scheduler.py` (+5):
+   - pipeline jalan setelah discovery menemukan lead baru;
+   - pipeline di-skip saat `new == 0`;
+   - pipeline di-skip saat tidak dikonfigurasi;
+   - kegagalan pipeline tidak menggagalkan cycle;
+   - hasil bertipe report object (`per_platform`) bisa diparse.
+
+## Catatan penting untuk sesi berikutnya
+
+- Test di mesin ini: pakai `--basetemp="C:\Users\ASUS\AppData\Local\Temp\opencode\pytest-base"`
+  (temp dir default `pytest-of-ASUS` kena `WinError 5` access denied — masalah lingkungan,
+  bukan dari kode).
+- `serve` = jalur auto-screening. Discovery interval default 60 min per platform
+  (remote_ok 180, yc_work 360 dari `platform_intervals`). Jitter pertama 0–300s.
+- Kuota LLM Groq: screening otomatis memakai TPD harian — waspadai 403/429 (backoff 60s
+  sudah ada di `client.py`).
+- 3 draf masih menunggu review HITL dari sesi 12 Agustus:
+  `.\.venv\Scripts\python.exe -m freelance_lead_gen review`
+
+---
+
 # Sesi Log — 12 Agustus 2026
 
 Ringkasan percakapan sesi ini untuk resume kerja berikutnya. Proyek: **freelance-lead-gen**

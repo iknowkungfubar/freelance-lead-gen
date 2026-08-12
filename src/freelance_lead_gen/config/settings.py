@@ -53,6 +53,14 @@ class _DiscoverySettings(BaseSettings):
         le=1440,
         description="Interval between discovery rounds (minutes).",
     )
+    auto_screen: bool = Field(
+        default=True,
+        description=(
+            "Run the full screening pipeline (filtering → drafting → "
+            "verification) automatically after each discovery round that "
+            "finds new leads.  Set false to keep scheduling discovery only."
+        ),
+    )
     search_queries: str = Field(
         default="AI automation,AI readiness assessment,LLM pipeline,fine-tuning,"
         "RAG implementation,AI consulting,IT consulting",

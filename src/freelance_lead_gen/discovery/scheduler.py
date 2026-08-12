@@ -87,6 +87,12 @@ class SchedulerStats:
     total_failures: int = 0
     """Total failed discovery rounds."""
 
+    pipeline_runs: int = 0
+    """Total screening pipeline runs triggered after discovery cycles."""
+
+    pipeline_failures: int = 0
+    """Total screening pipeline runs that raised an exception."""
+
     started_at: datetime | None = None
     """When the scheduler was started."""
 
@@ -111,6 +117,12 @@ class DiscoveryScheduler:
         Async callable that performs a full discovery cycle.  Signature:
         ``async def fn(platforms: list[str]) -> dict[str, dict[str, int]]``.
         If ``None``, no discovery is executed (for testing).
+    pipeline_fn : Callable or None
+        Optional async callable that runs the screening pipeline
+        (filtering → drafting → verification) after a discovery cycle
+        that found new leads.  Signature:
+        ``async def fn(platform_name: str) -> Any``.  If ``None``, no
+        screening is triggered automatically.
     daily_cap : int
         Maximum opportunities to process per day (default 50).
     window_hours : int
@@ -121,11 +133,13 @@ class DiscoveryScheduler:
     def __init__(
         self,
         discovery_fn: Callable[[list[str]], Any] | None = None,
+        pipeline_fn: Callable[[str], Any] | None = None,
         *,
         daily_cap: int = _MAX_DAILY_OPPORTUNITIES,
         window_hours: int = _DISCOVERY_WINDOW_HOURS,
     ) -> None:
         self._discovery_fn = discovery_fn
+        self._pipeline_fn = pipeline_fn
 
         # Core settings.
         self._daily_cap = daily_cap
@@ -177,6 +191,8 @@ class DiscoveryScheduler:
             "total_leads": self._stats.total_leads,
             "total_new": self._stats.total_new,
             "total_failures": self._stats.total_failures,
+            "pipeline_runs": self._stats.pipeline_runs,
+            "pipeline_failures": self._stats.pipeline_failures,
             "platforms": {
                 name: {
                     "enabled": ps.enabled,
@@ -206,6 +222,8 @@ class DiscoveryScheduler:
             "total_cycles": self._stats.total_runs,
             "total_leads": self._stats.total_leads,
             "total_errors": self._stats.total_failures,
+            "pipeline_runs": self._stats.pipeline_runs,
+            "pipeline_failures": self._stats.pipeline_failures,
             "per_platform": {
                 name: {
                     "enabled": ps.enabled,
@@ -456,7 +474,7 @@ class DiscoveryScheduler:
                     result = {}
 
                 # Update stats.
-                platform_result = result.get(platform_name, {})
+                platform_result = self._extract_platform_result(result, platform_name)
                 leads_found = platform_result.get("found", 0)
                 leads_new = platform_result.get("new", 0)
 
@@ -495,6 +513,12 @@ class DiscoveryScheduler:
                     daily_cap=self._daily_cap,
                 )
 
+                # Automatically screen any newly discovered leads.  Runs
+                # inside the cycle lock so discovery and screening never
+                # overlap, and a screening failure never fails the cycle.
+                if self._pipeline_fn is not None and leads_new > 0:
+                    await self._run_pipeline(platform_name, leads_new)
+
             except Exception as exc:
                 schedule.consecutive_failures += 1
                 self._stats.total_failures += 1
@@ -519,6 +543,50 @@ class DiscoveryScheduler:
             logger.info("scheduler.cycle_complete", **self.health_status)
 
     # ── Helpers ─────────────────────────────────────────────────────────
+
+    def _extract_platform_result(
+        self,
+        result: Any,
+        platform_name: str,
+    ) -> dict[str, Any]:
+        """Normalise a discovery result into the per-platform stats dict.
+
+        Accepts either a ``{platform: {...}}`` dict (as returned by the
+        scheduler's test doubles) or a report object exposing a
+        ``per_platform`` mapping (as returned by
+        :meth:`DiscoveryAgent.run_discovery_cycle`).
+        """
+        if isinstance(result, dict):
+            return result.get(platform_name, {}) or {}
+        per_platform = getattr(result, "per_platform", None)
+        if isinstance(per_platform, dict):
+            return per_platform.get(platform_name, {}) or {}
+        return {}
+
+    async def _run_pipeline(self, platform_name: str, new_leads: int) -> None:
+        """Invoke the screening pipeline after a successful discovery cycle.
+
+        Failures are tracked but never propagate — a screening error must
+        not mark the discovery cycle as failed or auto-disable a platform.
+        """
+        logger.info(
+            "scheduler.pipeline_starting",
+            platform=platform_name,
+            new_leads=new_leads,
+        )
+        try:
+            await self._pipeline_fn(platform_name)
+            self._stats.pipeline_runs += 1
+            logger.info("scheduler.pipeline_completed", platform=platform_name)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._stats.pipeline_failures += 1
+            logger.exception(
+                "scheduler.pipeline_failed",
+                platform=platform_name,
+                error=str(exc),
+            )
 
     def _register_aps_job(self, platform_name: str, schedule: PlatformSchedule) -> None:
         """Register an APScheduler job for *platform_name*.

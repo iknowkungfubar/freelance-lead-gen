@@ -24,6 +24,8 @@ from freelance_lead_gen.models.opportunity import LeadOpportunity, LeadStatus
 from freelance_lead_gen.storage.repository import OpportunityRepository
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from freelance_lead_gen.discovery.extractor import RawLead
     from freelance_lead_gen.discovery.platforms.base import BasePlatformExtractor
 
@@ -648,6 +650,7 @@ class DiscoveryAgent:
         self,
         *,
         daily_cap: int | None = None,
+        pipeline_fn: Callable[[str], Any] | None = None,
     ) -> DiscoveryScheduler:
         """Create a :class:`DiscoveryScheduler` configured to run cycles via
         this agent.
@@ -656,6 +659,9 @@ class DiscoveryAgent:
         ----------
         daily_cap : int or None
             Daily opportunity cap.  Defaults to the settings value (50).
+        pipeline_fn : Callable or None
+            Optional async callable run after a discovery cycle that found
+            new leads, to automatically screen/draft them.
 
         Returns
         -------
@@ -667,6 +673,7 @@ class DiscoveryAgent:
 
         scheduler = DiscoveryScheduler(
             discovery_fn=self.run_discovery_cycle,
+            pipeline_fn=pipeline_fn,
             daily_cap=cap,
         )
 
