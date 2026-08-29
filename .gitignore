@@ -177,3 +177,4 @@ ai-context.md
 .hermes/
 SKILL.md
 *.hermes-profile
+.token-policy/
